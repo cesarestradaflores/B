@@ -1,5 +1,5 @@
 // -----------------------------------------------------------------
-// --- Config.js (CONFIGURACIÓN VR PRIMERA PERSONA CON MENÚS)
+// --- Config.js (CONFIGURACIÓN VR PRIMERA PERSONA CON MENÚS - META QUEST 3 COMPLETO)
 // -----------------------------------------------------------------
 
 export const Config = {
@@ -225,6 +225,44 @@ export const Config = {
         THREEJS: '^0.167.0',
         WEBXR: '1.0',
         BROWSERS: ['Chrome 79+', 'Firefox 70+', 'Edge 79+']
+    },
+
+    // ===== CONFIGURACIÓN META QUEST 3 =====
+    META_QUEST_SETTINGS: {
+        BUTTON_MAPPING: {
+            TRIGGER: 0,            // Trigger principal
+            GRIP: 1,               // Botón de agarre
+            A: 4,                  // Botón A (mano derecha) / X (mano izquierda)
+            B: 5,                  // Botón B (mano derecha) / Y (mano izquierda)
+            THUMBSTICK: 3,         // Stick analógico (click)
+            MENU: 2,               // Botón menú del sistema
+            THUMBREST: 6,          // Sensor de descanso de pulgar
+        },
+        
+        // Perfiles de controladores
+        CONTROLLER_PROFILES: [
+            'meta-quest-touch-plus',
+            'meta-quest-touch-pro',
+            'oculus-touch-v3',
+            'oculus-touch-v2'
+        ],
+        
+        // Ajustes de háptica
+        HAPTIC_INTENSITY: {
+            LOW: 0.3,
+            MEDIUM: 0.5,
+            HIGH: 0.8
+        }
+    },
+
+    // ===== AJUSTES DE GIRO DE CABEZA MEJORADOS =====
+    HEAD_GAZE_SETTINGS: {
+        BASE_THRESHOLD: 0.3,           // Umbral base para detección (radianes)
+        HYSTERESIS: 0.1,               // Histéresis para evitar cambios accidentales
+        MIN_GAZE_DURATION: 0.3,        // Tiempo mínimo mirando para cambiar (segundos)
+        CENTER_THRESHOLD: 0.15,        // Umbral para considerar "centro"
+        RETURN_DELAY: 0.5,             // Retardo antes de poder cambiar nuevamente
+        SENSITIVITY_MULTIPLIER: 1.0    // Multiplicador de sensibilidad (0.5 a 2.0)
     }
 };
 
@@ -245,6 +283,58 @@ Config.getVRDeviceSettings = function() {
     };
 };
 
+// Función para detectar Meta Quest
+Config.detectMetaQuest = function() {
+    if (navigator.xr) {
+        return navigator.xr.isSessionSupported('immersive-vr')
+            .then(vrSupported => {
+                if (!vrSupported) return false;
+                
+                // Verificar user agent
+                const userAgent = navigator.userAgent.toLowerCase();
+                const isQuest = userAgent.includes('quest') || 
+                               userAgent.includes('oculus') ||
+                               userAgent.includes('meta');
+                
+                // Verificar características
+                const hasHandTracking = 'xr' in navigator && 
+                                       navigator.xr &&
+                                       navigator.xr.isSessionSupported &&
+                                       navigator.xr.isSessionSupported('immersive-vr');
+                
+                return {
+                    isMetaQuest: isQuest,
+                    hasHandTracking: hasHandTracking,
+                    userAgent: navigator.userAgent
+                };
+            });
+    }
+    return Promise.resolve({ isMetaQuest: false });
+};
+
+// Función para ajustar configuración según dispositivo
+Config.adjustForMetaQuest = function() {
+    console.log("🔍 Detectando dispositivo VR...");
+    
+    Config.detectMetaQuest().then(result => {
+        if (result.isMetaQuest) {
+            console.log("🎮 Meta Quest detectado, ajustando configuración...");
+            
+            // Ajustar configuración para Quest
+            Config.VR_SETTINGS.GAZE_THRESHOLD = 0.25;
+            Config.VR_SETTINGS.GAZE_DURATION = 0.35;
+            Config.VR_SETTINGS.CAMERA_SMOOTHING = 0.15;
+            
+            // Ajustar controles
+            Config.VR_CONTROLS.DEADZONE = 0.15;
+            
+            console.log("✅ Configuración ajustada para Meta Quest");
+        }
+    }).catch(err => {
+        console.log("⚠️ No se pudo detectar dispositivo VR:", err);
+    });
+};
+
 // Exportar función helper para debug
 Config.logConfig = function() {
     console.group('⚙️ Configuración del Juego');
@@ -253,5 +343,7 @@ Config.logConfig = function() {
     console.log('Velocidad Inicial:', Config.GAME_START_SPEED);
     console.log('Power-ups:', Config.POWERUP_TYPE);
     console.log('VR Menú Distance:', Config.VR_MENU_SETTINGS.MENU_DISTANCE);
+    console.log('Meta Quest Config:', Config.META_QUEST_SETTINGS ? 'Sí' : 'No');
+    console.log('Giro de cabeza mejorado:', Config.HEAD_GAZE_SETTINGS ? 'Sí' : 'No');
     console.groupEnd();
 };
