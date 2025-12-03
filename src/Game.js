@@ -1,5 +1,5 @@
 // -----------------------------------------------------------------
-// --- Game.js (VR PRIMERA PERSONA - CON SISTEMA DE MENÚS VR)
+// --- Game.js (VR PRIMERA PERSONA - SISTEMA COMPLETO CON MENÚS VR)
 // -----------------------------------------------------------------
 
 import * as THREE from 'three';
@@ -13,9 +13,11 @@ import { Player } from './Player.js';
 import { GameWorld } from './GameWorld.js';
 import { ObstacleManager } from './ObstacleManager.js';
 import { VRControls } from './VRControls.js';
+import { VRInputHandler } from './VRInputHandler.js';
 
 export class Game {
     constructor() {
+        // ===== SISTEMA THREE.JS =====
         this.scene = new THREE.Scene();
         this.camera = new THREE.PerspectiveCamera(
             Config.CAMERA_FOV,
@@ -23,38 +25,47 @@ export class Game {
             Config.CAMERA_NEAR,
             Config.CAMERA_FAR
         );
-        this.renderer = new THREE.WebGLRenderer({ antialias: true });
+        this.renderer = new THREE.WebGLRenderer({ 
+            antialias: true,
+            alpha: true,
+            powerPreference: "high-performance"
+        });
         this.clock = new THREE.Clock();
         
-        // Sistema CSS3D para menús VR
+        // ===== SISTEMA CSS3D PARA MENÚS VR =====
         this.cssRenderer = null;
         this.cssScene = null;
         
+        // ===== COMPONENTES DEL JUEGO =====
         this.player = null;
         this.world = null;
         this.obstacleManager = null;
         this.assets = {};
 
+        // ===== SISTEMA VR =====
         this.isVRMode = false;
         this.vrControls = null;
+        this.vrInputHandler = null; // NUEVO: Input Handler VR
         this.cameraContainer = new THREE.Group();
 
-        // Sistema de menús VR
+        // ===== SISTEMA DE MENÚS VR =====
         this.vrMenuSystem = {
             isActive: false,
             type: null, // 'gameover' o 'pause'
             menuElement: null,
             menuContainer: null,
-            menuDistance: 2.0,
+            menuDistance: Config.VR_MENU_SETTINGS.MENU_DISTANCE,
             controllers: []
         };
 
+        // ===== SISTEMA DE AUDIO =====
         this.audioListener = null;
         this.backgroundMusic = null;
         this.coinSound = null;
         this.powerUpSound = null;
         this.isMusicPlaying = false;
 
+        // ===== ESTADO DEL JUEGO =====
         this.isGameStarted = false;
         this.isGameOver = false;
         this.isPaused = false;
@@ -62,12 +73,15 @@ export class Game {
         this.score = 0;
         this.distance = 0;
         this.difficultyLevel = 1;
+        this.survivalTime = 0;
 
+        // ===== POWER-UPS =====
         this.activePowerUps = {
             magnet: { active: false, timer: 0 },
             double: { active: false, timer: 0 }
         };
 
+        // ===== INTERFAZ DE USUARIO =====
         this.ui = {
             score: document.getElementById('score'),
             distance: document.getElementById('distance'),
@@ -83,51 +97,67 @@ export class Game {
             pauseMenu: document.getElementById('pause-menu')
         };
 
+        // ===== INDICADORES DE POWER-UPS =====
         this.powerUpIndicators = {
             magnet: document.createElement('div'),
             double: document.createElement('div')
         };
 
-        this.setupPowerUpUI();
-        
+        // ===== CONFIGURACIÓN DE RENDIMIENTO =====
         this.frameCount = 0;
-        this.collisionDebugEnabled = false;
+        this.collisionDebugEnabled = Config.DEBUG_SETTINGS.SHOW_COLLISION_DEBUG;
         this.debugStatsTimer = 0;
+        this.lastFrameTime = 0;
         
-        // Para controles VR
+        // ===== CONTROLES VR =====
         this.lastButtonState = { A: false, B: false, X: false, Y: false };
         this.buttonCheckInterval = null;
+
+        // ===== INICIALIZACIÓN =====
+        this.setupPowerUpUI();
+        Config.logConfig(); // Mostrar configuración en consola
+        
+        console.log("🎮 Game.js inicializado - Sistema VR Completo");
     }
 
     async init() {
-        console.log("Iniciando el juego con VR primera persona y menús VR...");
+        console.log("🎮 Iniciando el juego con sistema VR completo...");
 
+        // Configurar renderer
         this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setPixelRatio(window.devicePixelRatio);
-
-        this.setupWebXR();
-
-        this.camera.aspect = window.innerWidth / window.innerHeight;
-        this.camera.updateProjectionMatrix();
-
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         this.renderer.shadowMap.enabled = true;
+        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        this.renderer.toneMappingExposure = 1.0;
         this.renderer.outputEncoding = THREE.sRGBEncoding;
         document.body.appendChild(this.renderer.domElement);
 
+        // Configurar WebXR/VR
+        this.setupWebXR();
+
+        // Configurar cámara
+        this.camera.aspect = window.innerWidth / window.innerHeight;
+        this.camera.updateProjectionMatrix();
+
+        // Configurar contenedor de cámara VR
         this.setupCameraContainer();
 
+        // Configurar audio
         this.setupAudio();
 
+        // Configurar niebla y ambiente
         this.scene.fog = new THREE.Fog(Config.FOG_COLOR, Config.FOG_NEAR, Config.FOG_FAR);
         
+        // Posición inicial de cámara VR
         this.cameraContainer.position.set(0, Config.VR_SETTINGS.PLAYER_HEIGHT, 0);
         this.camera.position.set(0, 0, 0);
 
         try {
+            // Cargar assets
             this.assets = await this.preloadAssets();
             this.ui.loadingScreen.style.display = 'none';
-            console.log("✅ Assets cargados, mostrando modal de reglas.");
+            console.log("✅ Assets cargados correctamente");
             
         } catch (error) {
             console.error("❌ Error al cargar assets:", error);
@@ -136,28 +166,217 @@ export class Game {
             return Promise.reject(error);
         }
         
+        // Inicializar componentes del juego
         this.world = new GameWorld(this.scene, this.assets);
         this.player = new Player(this.scene, this.assets);
         this.obstacleManager = new ObstacleManager(this.scene, this.assets);
 
+        // Configurar controles VR
         this.setupVRControls();
-        this.setupVRMenuSystem(); // NUEVO: Sistema de menús VR
+        
+        // NUEVO: Configurar sistema de input VR
+        this.setupVRInputHandler();
+        
+        // Configurar sistema de menús VR
+        this.setupVRMenuSystem();
 
+        // Configurar iluminación
         this.setupLights();
+        
+        // Cargar ambiente HDR
         this.loadEnvironment('Recursos/sunset_jhbcentral_4k.hdr'); 
 
+        // Event listeners
         window.addEventListener('resize', this.onWindowResize.bind(this), false);
         document.addEventListener('keydown', this.player.onKeyDown.bind(this.player), false);
 
-        console.log("✅ Iniciación completa. VR primera persona con menús configurada.");
+        console.log("✅ Juego completamente inicializado - Sistema VR con Menús listo");
         
         return Promise.resolve();
     }
 
+    // ===== CONFIGURACIÓN VR =====
+
+    setupWebXR() {
+        this.renderer.xr.enabled = true;
+        
+        // Crear botón VR con estilo personalizado
+        const vrButton = VRButton.createButton(this.renderer);
+        vrButton.style.cssText = `
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 24px;
+            background: linear-gradient(135deg, rgba(0, 255, 65, 0.3) 0%, rgba(0, 136, 0, 0.3) 100%);
+            border: 2px solid #00FF41;
+            border-radius: 8px;
+            color: white;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        `;
+        
+        vrButton.addEventListener('mouseenter', () => {
+            vrButton.style.background = 'linear-gradient(135deg, rgba(0, 255, 65, 0.5) 0%, rgba(0, 136, 0, 0.5) 100%)';
+        });
+        
+        vrButton.addEventListener('mouseleave', () => {
+            vrButton.style.background = 'linear-gradient(135deg, rgba(0, 255, 65, 0.3) 0%, rgba(0, 136, 0, 0.3) 100%)';
+        });
+        
+        document.body.appendChild(vrButton);
+        
+        // Eventos de sesión VR
+        this.renderer.xr.addEventListener('sessionstart', () => {
+            console.log('🚀 Sesión VR iniciada - Primera persona activada');
+            this.onVRStart();
+        });
+        
+        this.renderer.xr.addEventListener('sessionend', () => {
+            console.log('📴 Sesión VR finalizada');
+            this.onVREnd();
+        });
+        
+        // Verificar capacidades VR
+        const capabilities = VRInputHandler.detectVRCapabilities();
+        console.log("🔍 Capacidades VR detectadas:", capabilities);
+        
+        console.log("✅ WebXR configurado - Primera persona inmersiva");
+    }
+
+    setupVRInputHandler() {
+        // Inicializar el sistema de input VR
+        this.vrInputHandler = new VRInputHandler(this.renderer, this);
+        console.log("✅ VR Input Handler configurado");
+    }
+
+    setupVRControls() {
+        if (this.renderer.xr.enabled && this.player) {
+            this.vrControls = new VRControls(this.camera, this.renderer, this.player, this.scene, this.cameraContainer);
+            console.log("✅ Controles VR primera persona configurados");
+        }
+    }
+
+    onVRStart() {
+        this.isVRMode = true;
+        this.player.enableVRMode();
+        
+        // Ocultar modelo del jugador en VR (eres el personaje)
+        if (this.player.group) {
+            this.player.group.visible = false;
+        }
+        
+        // Posicionar cámara VR en la cabeza del jugador
+        this.cameraContainer.position.set(
+            this.player.group.position.x,
+            Config.VR_SETTINGS.PLAYER_HEIGHT,
+            this.player.group.position.z
+        );
+        
+        // Notificar a la UI
+        window.dispatchEvent(new CustomEvent('game-vr-start'));
+        
+        // Mostrar instrucciones VR
+        this.showVRInstructions();
+        
+        console.log("🎮 Modo VR primera persona activado - Eres el personaje");
+    }
+
+    onVREnd() {
+        this.isVRMode = false;
+        this.player.disableVRMode();
+        
+        // Mostrar modelo del jugador nuevamente
+        if (this.player.group) {
+            this.player.group.visible = true;
+        }
+        
+        // Si hay menú VR activo, ocultarlo
+        if (this.vrMenuSystem.isActive) {
+            this.hideVRMenu();
+            this.resumeGameFromVRMenu();
+        }
+        
+        // Restaurar posición de cámara en modo normal
+        this.cameraContainer.position.set(0, Config.CAMERA_START_Y, Config.CAMERA_START_Z);
+        this.cameraContainer.lookAt(0, 0, 0);
+        
+        // Notificar a la UI
+        window.dispatchEvent(new CustomEvent('game-vr-end'));
+        
+        console.log("🖥️ Modo VR desactivado - Volviendo a tercera persona");
+    }
+
+    showVRInstructions() {
+        // Mostrar notificación de instrucciones VR
+        const notification = document.createElement('div');
+        notification.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: #00FF41;
+            padding: 30px 50px;
+            border-radius: 15px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            z-index: 2000;
+            text-align: center;
+            border: 3px solid #00FF41;
+            box-shadow: 0 0 40px rgba(0, 255, 65, 0.5);
+            backdrop-filter: blur(10px);
+            animation: fadeInOut 5s ease-in-out;
+        `;
+        
+        notification.innerHTML = `
+            <div style="margin-bottom: 15px;">🎮 CONTROLES VR</div>
+            <div style="font-size: 1.2rem; margin-bottom: 10px;">Botón A/X: Pausa</div>
+            <div style="font-size: 1.2rem; margin-bottom: 10px;">Botón Grip: Menú rápido</div>
+            <div style="font-size: 1.2rem;">Mirar a los lados: Cambiar carril</div>
+        `;
+        
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes fadeInOut {
+                0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+                20% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+                80% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+                100% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+            }
+        `;
+        
+        document.head.appendChild(style);
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+            if (document.body.contains(notification)) {
+                document.body.removeChild(notification);
+            }
+            if (document.head.contains(style)) {
+                document.head.removeChild(style);
+            }
+        }, 5000);
+    }
+
+    // ===== SISTEMA DE MENÚS VR =====
+
     setupVRMenuSystem() {
         console.log("🔄 Configurando sistema de menús VR...");
         
-        // 1. Crear renderizador CSS3D
+        // 1. Configurar renderizador CSS3D
+        this.setupCSS3DRenderer();
+        
+        // 2. Crear contenedor del menú VR
+        this.createVRMenuContainer();
+        
+        console.log("✅ Sistema de menús VR configurado");
+    }
+
+    setupCSS3DRenderer() {
         this.cssRenderer = new CSS3DRenderer();
         this.cssRenderer.setSize(window.innerWidth, window.innerHeight);
         this.cssRenderer.domElement.style.position = 'absolute';
@@ -168,50 +387,52 @@ export class Game {
         
         this.cssScene = new THREE.Scene();
         
-        // 2. Crear contenedor del menú VR
-        this.createVRMenuContainer();
-        
-        // 3. Configurar controles VR para menús
-        this.setupVRMenuControls();
-        
-        console.log("✅ Sistema de menús VR configurado");
+        console.log("✅ Renderizador CSS3D configurado");
     }
 
     createVRMenuContainer() {
-        // Crear elemento HTML para el menú
+        // Crear elemento HTML para el menú VR
         this.vrMenuSystem.menuContainer = document.createElement('div');
         this.vrMenuSystem.menuContainer.id = 'vr-menu-container';
+        
+        // Aplicar estilos dinámicamente desde Config
+        const menuStyle = Config.VR_MENU_SETTINGS;
         this.vrMenuSystem.menuContainer.style.cssText = `
             position: absolute;
-            width: 500px;
-            min-height: 400px;
-            background: rgba(20, 20, 30, 0.98);
-            border: 4px solid #00FF41;
+            width: ${menuStyle.MENU_WIDTH}px;
+            min-height: ${menuStyle.MENU_HEIGHT}px;
+            background: ${menuStyle.COLOR_BACKGROUND};
+            border: 4px solid ${menuStyle.COLOR_PRIMARY};
             border-radius: 20px;
             padding: 40px;
             color: white;
             font-family: 'Arial', sans-serif;
             text-align: center;
-            box-shadow: 0 0 80px rgba(0, 255, 65, 0.7);
-            backdrop-filter: blur(15px);
+            box-shadow: ${menuStyle.SHADOW_INTENSITY} rgba(0, 255, 65, 0.7);
+            backdrop-filter: blur(${menuStyle.BLUR_AMOUNT});
             display: none;
             pointer-events: auto;
             z-index: 1000;
             transform-style: preserve-3d;
             box-sizing: border-box;
+            opacity: ${menuStyle.OPACITY};
         `;
         
-        // Contenido inicial
+        // Contenido del menú VR
         this.vrMenuSystem.menuContainer.innerHTML = `
-            <div id="vr-menu-title" style="font-size: 3rem; color: #00FF41; margin-bottom: 30px; 
-                 text-shadow: 0 0 15px #00FF41; font-weight: bold;"></div>
+            <div id="vr-menu-title" style="font-size: ${menuStyle.FONT_SIZE_TITLE}; 
+                 color: ${menuStyle.COLOR_PRIMARY}; margin-bottom: 30px; 
+                 text-shadow: 0 0 15px ${menuStyle.COLOR_PRIMARY}; font-weight: bold;"></div>
             
-            <div id="vr-menu-content" style="margin: 40px 0; font-size: 1.3rem; line-height: 1.6;"></div>
+            <div id="vr-menu-content" style="margin: 40px 0; font-size: ${menuStyle.FONT_SIZE_CONTENT}; 
+                 line-height: 1.6;"></div>
             
-            <div id="vr-menu-buttons" style="display: flex; flex-direction: column; gap: 20px; margin-top: 30px;"></div>
+            <div id="vr-menu-buttons" style="display: flex; flex-direction: column; 
+                 gap: 20px; margin-top: 30px;"></div>
             
-            <div id="vr-menu-instructions" style="margin-top: 40px; padding-top: 20px; border-top: 2px solid rgba(255,255,255,0.2); 
-                 font-size: 1rem; color: #888; font-style: italic;">
+            <div id="vr-menu-instructions" style="margin-top: 40px; padding-top: 20px; 
+                 border-top: 2px solid rgba(255,255,255,0.2); font-size: 1rem; 
+                 color: #888; font-style: italic;">
                 Usa el rayo del controlador para seleccionar opciones
             </div>
         `;
@@ -220,170 +441,81 @@ export class Game {
         
         // Crear objeto CSS3D
         this.vrMenuSystem.menuElement = new THREE.CSS3DObject(this.vrMenuSystem.menuContainer);
-        this.vrMenuSystem.menuElement.scale.set(0.002, 0.002, 0.002);
+        this.vrMenuSystem.menuElement.scale.set(
+            menuStyle.MENU_SCALE,
+            menuStyle.MENU_SCALE,
+            menuStyle.MENU_SCALE
+        );
         this.cssScene.add(this.vrMenuSystem.menuElement);
         
         console.log("✅ Contenedor de menú VR creado");
     }
 
-    setupVRMenuControls() {
-        if (!this.renderer.xr.enabled) return;
-        
-        // Configurar controladores para menús
-        for (let i = 0; i < 2; i++) {
-            const controller = this.renderer.xr.getController(i);
-            
-            // Agregar rayo visual
-            const geometry = new THREE.BufferGeometry().setFromPoints([
-                new THREE.Vector3(0, 0, 0),
-                new THREE.Vector3(0, 0, -3)
-            ]);
-            
-            const material = new THREE.LineBasicMaterial({ 
-                color: i === 0 ? 0xff4444 : 0x4488ff,
-                opacity: 0.6,
-                transparent: true,
-                linewidth: 2
-            });
-            
-            const line = new THREE.Line(geometry, material);
-            controller.add(line);
-            
-            // Eventos
-            controller.addEventListener('selectstart', (event) => this.onVRMenuSelect(event, i));
-            controller.addEventListener('squeezestart', (event) => this.onVRSqueeze(event, i));
-            
-            this.vrMenuSystem.controllers.push(controller);
-            this.scene.add(controller);
-        }
-        
-        // Iniciar polling de botones
-        this.startVRButtonPolling();
-        
-        console.log("✅ Controles VR para menús configurados");
-    }
-
-    startVRButtonPolling() {
-        // Polling para detectar botones del gamepad
-        const checkVRButtons = () => {
-            if (!this.renderer.xr.isPresenting || !this.isVRMode) {
-                requestAnimationFrame(checkVRButtons);
-                return;
-            }
-            
-            const session = this.renderer.xr.getSession();
-            if (session && session.inputSources) {
-                session.inputSources.forEach((inputSource, index) => {
-                    if (inputSource.gamepad) {
-                        const gamepad = inputSource.gamepad;
-                        
-                        // Botón A/X (dependiendo del controlador)
-                        const buttonA = gamepad.buttons[0] || gamepad.buttons[4];
-                        const buttonB = gamepad.buttons[1] || gamepad.buttons[5];
-                        
-                        // Botón A/X para pausa
-                        if (buttonA && buttonA.pressed && !this.lastButtonState.A) {
-                            console.log("🎮 Botón A/X presionado en VR");
-                            if (this.isGameStarted && !this.isGameOver) {
-                                this.toggleVRPauseMenu();
-                            }
-                            this.lastButtonState.A = true;
-                        } else if (!buttonA.pressed) {
-                            this.lastButtonState.A = false;
-                        }
-                        
-                        // Botón B/Y para salir del menú
-                        if (buttonB && buttonB.pressed && !this.lastButtonState.B && this.vrMenuSystem.isActive) {
-                            console.log("🎮 Botón B/Y presionado en VR");
-                            this.hideVRMenu();
-                            this.lastButtonState.B = true;
-                        } else if (!buttonB.pressed) {
-                            this.lastButtonState.B = false;
-                        }
-                    }
-                });
-            }
-            
-            requestAnimationFrame(checkVRButtons);
-        };
-        
-        checkVRButtons();
-    }
-
-    onVRMenuSelect(event, controllerIndex) {
-        if (!this.vrMenuSystem.isActive) return;
-        
-        console.log("🎯 Selección en menú VR detectada");
-        
-        // Aquí implementaríamos detección de clic en botones específicos
-        // Por ahora manejamos con event listeners en los botones HTML
-    }
-
-    onVRSqueeze(event, controllerIndex) {
-        // Botón de grip para pausa alternativa
-        if (this.isGameStarted && !this.isGameOver && !this.vrMenuSystem.isActive) {
-            console.log("🎮 Botón grip presionado - Mostrando menú de pausa");
-            this.showVRPauseMenu();
-        }
-    }
-
     showVRGameOverMenu() {
+        if (this.vrMenuSystem.isActive) return;
+        
         console.log("💀 Mostrando menú Game Over en VR");
         
         this.vrMenuSystem.isActive = true;
         this.vrMenuSystem.type = 'gameover';
         
-        // Configurar contenido
-        document.getElementById('vr-menu-title').textContent = '¡GAME OVER!';
-        document.getElementById('vr-menu-title').style.color = '#FF4444';
-        document.getElementById('vr-menu-title').style.textShadow = '0 0 20px rgba(255, 68, 68, 0.8)';
+        const menuStyle = Config.VR_MENU_SETTINGS;
         
-        const content = `
+        // Configurar título
+        const titleElement = document.getElementById('vr-menu-title');
+        titleElement.textContent = '¡GAME OVER!';
+        titleElement.style.color = menuStyle.COLOR_SECONDARY;
+        titleElement.style.textShadow = `0 0 20px ${menuStyle.COLOR_SECONDARY}`;
+        
+        // Configurar contenido
+        const contentElement = document.getElementById('vr-menu-content');
+        contentElement.innerHTML = `
             <div style="margin-bottom: 30px; font-size: 1.4rem;">
                 Has sido atrapado por los zombies
             </div>
             <div style="background: rgba(255, 68, 68, 0.15); padding: 25px; border-radius: 12px; 
-                 border-left: 5px solid #FF4444; border-right: 5px solid #FF4444;">
+                 border-left: 5px solid ${menuStyle.COLOR_SECONDARY}; border-right: 5px solid ${menuStyle.COLOR_SECONDARY};">
                 <div style="display: flex; justify-content: space-between; margin: 12px 0; font-size: 1.2rem;">
                     <span>Puntuación Final:</span>
-                    <span style="color: #FF4444; font-weight: bold; font-size: 1.3rem;">${this.score}</span>
+                    <span style="color: ${menuStyle.COLOR_SECONDARY}; font-weight: bold; font-size: 1.3rem;">${this.score}</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; margin: 12px 0; font-size: 1.2rem;">
                     <span>Distancia Recorrida:</span>
-                    <span style="color: #FF4444; font-weight: bold; font-size: 1.3rem;">${Math.floor(this.distance)}m</span>
+                    <span style="color: ${menuStyle.COLOR_SECONDARY}; font-weight: bold; font-size: 1.3rem;">${Math.floor(this.distance)}m</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; margin: 12px 0; font-size: 1.2rem;">
                     <span>Monedas Recolectadas:</span>
-                    <span style="color: #FF4444; font-weight: bold; font-size: 1.3rem;">${Math.floor(this.score / 10)}</span>
+                    <span style="color: ${menuStyle.COLOR_SECONDARY}; font-weight: bold; font-size: 1.3rem;">${Math.floor(this.score / 10)}</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; margin: 12px 0; font-size: 1.2rem;">
                     <span>Tiempo de Supervivencia:</span>
-                    <span style="color: #FF4444; font-weight: bold; font-size: 1.3rem;">${Math.floor(this.distance / this.gameSpeed)}s</span>
+                    <span style="color: ${menuStyle.COLOR_SECONDARY}; font-weight: bold; font-size: 1.3rem;">${Math.floor(this.survivalTime)}s</span>
                 </div>
             </div>
         `;
         
-        document.getElementById('vr-menu-content').innerHTML = content;
-        
-        // Crear botones
-        const buttonsHTML = `
+        // Configurar botones
+        const buttonsElement = document.getElementById('vr-menu-buttons');
+        buttonsElement.innerHTML = `
             <button id="vr-restart-btn" class="vr-menu-btn" 
-                    style="background: linear-gradient(135deg, #FF4444 0%, #CC0000 100%); padding: 18px;">
+                    style="background: linear-gradient(135deg, ${menuStyle.COLOR_SECONDARY} 0%, #CC0000 100%); 
+                    padding: ${menuStyle.BUTTON_PADDING}; font-size: ${menuStyle.FONT_SIZE_BUTTON};
+                    border-radius: ${menuStyle.BUTTON_BORDER_RADIUS}; transition: ${menuStyle.BUTTON_TRANSITION};">
                 🔄 REINICIAR NIVEL
             </button>
             <button id="vr-mainmenu-btn" class="vr-menu-btn" 
-                    style="background: linear-gradient(135deg, #666666 0%, #333333 100%); padding: 18px;">
+                    style="background: linear-gradient(135deg, #666666 0%, #333333 100%); 
+                    padding: ${menuStyle.BUTTON_PADDING}; font-size: ${menuStyle.FONT_SIZE_BUTTON};
+                    border-radius: ${menuStyle.BUTTON_BORDER_RADIUS}; transition: ${menuStyle.BUTTON_TRANSITION};">
                 🏠 MENÚ PRINCIPAL
             </button>
         `;
-        
-        document.getElementById('vr-menu-buttons').innerHTML = buttonsHTML;
         
         // Mostrar menú
         this.vrMenuSystem.menuContainer.style.display = 'block';
         this.positionVRMenu();
         
-        // Agregar event listeners
+        // Agregar event listeners a botones
         setTimeout(() => {
             document.getElementById('vr-restart-btn').addEventListener('click', () => this.onVRRestartClick());
             document.getElementById('vr-mainmenu-btn').addEventListener('click', () => this.onVRMainMenuClick());
@@ -396,59 +528,73 @@ export class Game {
     }
 
     showVRPauseMenu() {
+        if (this.vrMenuSystem.isActive) return;
+        
         console.log("⏸️ Mostrando menú de pausa en VR");
         
         this.vrMenuSystem.isActive = true;
         this.vrMenuSystem.type = 'pause';
         
-        // Configurar contenido
-        document.getElementById('vr-menu-title').textContent = 'JUEGO EN PAUSA';
-        document.getElementById('vr-menu-title').style.color = '#00FF41';
-        document.getElementById('vr-menu-title').style.textShadow = '0 0 15px rgba(0, 255, 65, 0.8)';
+        const menuStyle = Config.VR_MENU_SETTINGS;
         
-        const content = `
+        // Configurar título
+        const titleElement = document.getElementById('vr-menu-title');
+        titleElement.textContent = 'JUEGO EN PAUSA';
+        titleElement.style.color = menuStyle.COLOR_PRIMARY;
+        titleElement.style.textShadow = `0 0 15px ${menuStyle.COLOR_PRIMARY}`;
+        
+        // Configurar contenido
+        const contentElement = document.getElementById('vr-menu-content');
+        contentElement.innerHTML = `
             <div style="margin-bottom: 30px; font-size: 1.4rem;">
                 El juego está pausado
             </div>
             <div style="background: rgba(0, 255, 65, 0.15); padding: 25px; border-radius: 12px; 
-                 border-left: 5px solid #00FF41; border-right: 5px solid #00FF41;">
+                 border-left: 5px solid ${menuStyle.COLOR_PRIMARY}; border-right: 5px solid ${menuStyle.COLOR_PRIMARY};">
                 <div style="font-size: 1.2rem; margin-bottom: 15px;">
                     <strong>Estado Actual:</strong>
                 </div>
                 <div style="display: flex; justify-content: space-between; margin: 10px 0;">
                     <span>Puntuación:</span>
-                    <span style="color: #00FF41; font-weight: bold;">${this.score}</span>
+                    <span style="color: ${menuStyle.COLOR_PRIMARY}; font-weight: bold;">${this.score}</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; margin: 10px 0;">
                     <span>Distancia:</span>
-                    <span style="color: #00FF41; font-weight: bold;">${Math.floor(this.distance)}m</span>
+                    <span style="color: ${menuStyle.COLOR_PRIMARY}; font-weight: bold;">${Math.floor(this.distance)}m</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; margin: 10px 0;">
                     <span>Velocidad:</span>
-                    <span style="color: #00FF41; font-weight: bold;">${this.gameSpeed.toFixed(1)}</span>
+                    <span style="color: ${menuStyle.COLOR_PRIMARY}; font-weight: bold;">${this.gameSpeed.toFixed(1)}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin: 10px 0;">
+                    <span>Tiempo:</span>
+                    <span style="color: ${menuStyle.COLOR_PRIMARY}; font-weight: bold;">${Math.floor(this.survivalTime)}s</span>
                 </div>
             </div>
         `;
         
-        document.getElementById('vr-menu-content').innerHTML = content;
-        
-        // Crear botones
-        const buttonsHTML = `
+        // Configurar botones
+        const buttonsElement = document.getElementById('vr-menu-buttons');
+        buttonsElement.innerHTML = `
             <button id="vr-resume-btn" class="vr-menu-btn" 
-                    style="background: linear-gradient(135deg, #00FF41 0%, #008800 100%); padding: 18px;">
+                    style="background: linear-gradient(135deg, ${menuStyle.COLOR_PRIMARY} 0%, #008800 100%); 
+                    padding: ${menuStyle.BUTTON_PADDING}; font-size: ${menuStyle.FONT_SIZE_BUTTON};
+                    border-radius: ${menuStyle.BUTTON_BORDER_RADIUS}; transition: ${menuStyle.BUTTON_TRANSITION};">
                 ▶️ REANUDAR JUEGO
             </button>
             <button id="vr-restart-pause-btn" class="vr-menu-btn" 
-                    style="background: linear-gradient(135deg, #FFA500 0%, #CC8400 100%); padding: 18px;">
+                    style="background: linear-gradient(135deg, ${menuStyle.COLOR_ACCENT} 0%, #CC8400 100%); 
+                    padding: ${menuStyle.BUTTON_PADDING}; font-size: ${menuStyle.FONT_SIZE_BUTTON};
+                    border-radius: ${menuStyle.BUTTON_BORDER_RADIUS}; transition: ${menuStyle.BUTTON_TRANSITION};">
                 🔄 REINICIAR NIVEL
             </button>
             <button id="vr-mainmenu-pause-btn" class="vr-menu-btn" 
-                    style="background: linear-gradient(135deg, #666666 0%, #333333 100%); padding: 18px;">
+                    style="background: linear-gradient(135deg, #666666 0%, #333333 100%); 
+                    padding: ${menuStyle.BUTTON_PADDING}; font-size: ${menuStyle.FONT_SIZE_BUTTON};
+                    border-radius: ${menuStyle.BUTTON_BORDER_RADIUS}; transition: ${menuStyle.BUTTON_TRANSITION};">
                 🏠 MENÚ PRINCIPAL
             </button>
         `;
-        
-        document.getElementById('vr-menu-buttons').innerHTML = buttonsHTML;
         
         // Mostrar menú
         this.vrMenuSystem.menuContainer.style.display = 'block';
@@ -490,11 +636,11 @@ export class Game {
         this.vrMenuSystem.menuElement.rotateY(Math.PI);
         
         // Ajustar altura ligeramente
-        this.vrMenuSystem.menuElement.position.y += 0.3;
+        this.vrMenuSystem.menuElement.position.y += Config.VR_SETTINGS.CAMERA_OFFSET_Y;
     }
 
     pauseGameForVRMenu() {
-        console.log("⏸️ Pausando juego para menú VR");
+        console.log("⏸️ Pausando juego para menú VR (Time.timeScale = 0)");
         
         this.isPaused = true;
         this.clock.stop();
@@ -516,7 +662,7 @@ export class Game {
             this.world.update = function() {}; // Sobrescribir temporalmente
         }
         
-        console.log("✅ Juego pausado completamente");
+        console.log("✅ Juego pausado completamente (Time.timeScale = 0 equivalente)");
     }
 
     resumeGameFromVRMenu() {
@@ -531,7 +677,7 @@ export class Game {
             this.isMusicPlaying = true;
         }
         
-        // Reanudar animaciones Three.js
+        // Reanudar animaciones Three.js (Time.timeScale = 1)
         this.scene.traverse((object) => {
             if (object.mixer) {
                 object.mixer.timeScale = 1;
@@ -543,7 +689,7 @@ export class Game {
             this.world.update = GameWorld.prototype.update;
         }
         
-        console.log("✅ Juego reanudado");
+        console.log("✅ Juego reanudado (Time.timeScale = 1)");
     }
 
     onVRRestartClick() {
@@ -551,9 +697,8 @@ export class Game {
         this.hideVRMenu();
         this.resumeGameFromVRMenu();
         
-        if (this.restartGame) {
-            this.restartGame();
-        }
+        // Reiniciar juego
+        this.restartGame();
     }
 
     onVRResumeClick() {
@@ -567,9 +712,8 @@ export class Game {
         this.hideVRMenu();
         this.resumeGameFromVRMenu();
         
-        if (this.resetToMainMenu) {
-            this.resetToMainMenu();
-        }
+        // Volver al menú principal
+        this.resetToMainMenu();
     }
 
     hideVRMenu() {
@@ -582,7 +726,7 @@ export class Game {
             this.vrMenuSystem.menuContainer.style.display = 'none';
         }
         
-        // Limpiar event listeners
+        // Limpiar event listeners de botones
         const buttons = ['vr-restart-btn', 'vr-mainmenu-btn', 'vr-resume-btn', 
                         'vr-restart-pause-btn', 'vr-mainmenu-pause-btn'];
         
@@ -599,12 +743,12 @@ export class Game {
         if (this.vrMenuSystem.isActive && this.vrMenuSystem.type === 'pause') {
             this.hideVRMenu();
             this.resumeGameFromVRMenu();
-        } else if (!this.vrMenuSystem.isActive) {
+        } else if (!this.vrMenuSystem.isActive && this.isGameStarted && !this.isGameOver) {
             this.showVRPauseMenu();
         }
     }
 
-    // ========== MÉTODOS EXISTENTES (modificados) ==========
+    // ===== CONFIGURACIÓN DEL JUEGO =====
 
     setupCameraContainer() {
         this.scene.add(this.cameraContainer);
@@ -612,116 +756,38 @@ export class Game {
         console.log("✅ Contenedor de cámara VR configurado");
     }
 
-    setupWebXR() {
-        this.renderer.xr.enabled = true;
-        
-        const vrButton = VRButton.createButton(this.renderer);
-        vrButton.style.cssText = `
-            position: absolute;
-            bottom: 20px;
-            right: 20px;
-            padding: 12px 24px;
-            background: rgba(0, 255, 65, 0.3);
-            border: 2px solid #00FF41;
-            border-radius: 8px;
-            color: white;
-            font-weight: bold;
-            cursor: pointer;
-            z-index: 100;
-        `;
-        document.body.appendChild(vrButton);
-        
-        this.renderer.xr.addEventListener('sessionstart', () => {
-            console.log('🚀 Sesión VR iniciada - Primera persona activada');
-            this.onVRStart();
-        });
-        
-        this.renderer.xr.addEventListener('sessionend', () => {
-            console.log('📴 Sesión VR finalizada');
-            this.onVREnd();
-        });
-        
-        console.log("✅ WebXR configurado - Primera persona inmersiva");
-    }
-
-    onVRStart() {
-        this.isVRMode = true;
-        this.player.enableVRMode();
-        
-        if (this.player.group) {
-            this.player.group.visible = false;
-        }
-        
-        this.cameraContainer.position.set(
-            this.player.group.position.x,
-            Config.VR_SETTINGS.PLAYER_HEIGHT,
-            this.player.group.position.z
-        );
-        
-        window.dispatchEvent(new CustomEvent('game-vr-start'));
-        
-        console.log("🎮 Modo VR primera persona activado - Eres el personaje");
-    }
-
-    onVREnd() {
-        this.isVRMode = false;
-        this.player.disableVRMode();
-        
-        if (this.player.group) {
-            this.player.group.visible = true;
-        }
-        
-        // Si hay menú VR activo, ocultarlo
-        if (this.vrMenuSystem.isActive) {
-            this.hideVRMenu();
-            this.resumeGameFromVRMenu();
-        }
-        
-        this.cameraContainer.position.set(0, Config.CAMERA_START_Y, Config.CAMERA_START_Z);
-        this.cameraContainer.lookAt(0, 0, 0);
-        
-        window.dispatchEvent(new CustomEvent('game-vr-end'));
-        
-        console.log("🖥️ Modo VR desactivado - Volviendo a tercera persona");
-    }
-
-    setupVRControls() {
-        if (this.renderer.xr.enabled && this.player) {
-            this.vrControls = new VRControls(this.camera, this.renderer, this.player, this.scene, this.cameraContainer);
-            console.log("✅ Controles VR primera persona configurados");
-        }
-    }
-
     setupAudio() {
         this.audioListener = new THREE.AudioListener();
         this.camera.add(this.audioListener);
         
+        // Música de fondo
         this.backgroundMusic = new THREE.Audio(this.audioListener);
-        
         const audioLoader = new THREE.AudioLoader();
         
         audioLoader.load('Recursos/Subway Surfers.mp3', (buffer) => {
             this.backgroundMusic.setBuffer(buffer);
             this.backgroundMusic.setLoop(true);
-            this.backgroundMusic.setVolume(0.3);
+            this.backgroundMusic.setVolume(Config.AUDIO_SETTINGS.MUSIC_VOLUME);
             console.log("✅ Música cargada correctamente");
         }, undefined, (error) => {
             console.error("❌ Error al cargar la música:", error);
         });
 
+        // Sonido de monedas
         this.coinSound = new THREE.Audio(this.audioListener);
         audioLoader.load('Recursos/SonidoMoneda.mp3', (buffer) => {
             this.coinSound.setBuffer(buffer);
-            this.coinSound.setVolume(0.5);
+            this.coinSound.setVolume(Config.AUDIO_SETTINGS.COIN_VOLUME);
             console.log("✅ Sonido de monedas cargado correctamente");
         }, undefined, (error) => {
             console.error("❌ Error al cargar el sonido de monedas:", error);
         });
 
+        // Sonido de power-ups
         this.powerUpSound = new THREE.Audio(this.audioListener);
         audioLoader.load('Recursos/SonidoMoneda.mp3', (buffer) => {
             this.powerUpSound.setBuffer(buffer);
-            this.powerUpSound.setVolume(0.8);
+            this.powerUpSound.setVolume(Config.AUDIO_SETTINGS.POWERUP_VOLUME);
             console.log("✅ Sonido de power-ups cargado correctamente");
         }, undefined, (error) => {
             console.error("❌ Error al cargar el sonido de power-ups:", error);
@@ -741,35 +807,39 @@ export class Game {
             gap: 10px;
         `;
 
+        // Indicador de imán
         this.powerUpIndicators.magnet.id = 'magnet-indicator';
         this.powerUpIndicators.magnet.style.cssText = `
             background: rgba(255, 0, 0, 0.3);
             border: 2px solid #FF0000;
             border-radius: 10px;
-            padding: 10px;
+            padding: 10px 15px;
             color: white;
             font-weight: bold;
-            min-width: 140px;
+            min-width: 160px;
             text-align: center;
             display: none;
             transition: all 0.3s ease;
             font-size: 14px;
+            backdrop-filter: blur(5px);
         `;
         this.powerUpIndicators.magnet.innerHTML = '🎯 IMÁN: <span class="timer">0.0s</span>';
 
+        // Indicador de doble puntos
         this.powerUpIndicators.double.id = 'double-indicator';
         this.powerUpIndicators.double.style.cssText = `
             background: rgba(255, 255, 0, 0.3);
             border: 2px solid #FFFF00;
             border-radius: 10px;
-            padding: 10px;
+            padding: 10px 15px;
             color: white;
             font-weight: bold;
-            min-width: 140px;
+            min-width: 160px;
             text-align: center;
             display: none;
             transition: all 0.3s ease;
             font-size: 14px;
+            backdrop-filter: blur(5px);
         `;
         this.powerUpIndicators.double.innerHTML = '🔧 DOBLE: <span class="timer">0.0s</span>';
 
@@ -777,6 +847,8 @@ export class Game {
         powerUpContainer.appendChild(this.powerUpIndicators.double);
         document.body.appendChild(powerUpContainer);
     }
+
+    // ===== POWER-UPS =====
 
     activatePowerUp(type) {
         console.log(`🎯 ACTIVANDO POWER-UP: ${type}`);
@@ -786,13 +858,23 @@ export class Game {
         this.activePowerUps[type].active = true;
         this.activePowerUps[type].timer = duration;
         
+        // Mostrar indicador UI
         this.powerUpIndicators[type].style.display = 'block';
         this.powerUpIndicators[type].style.background = type === 'magnet' 
             ? 'rgba(255, 0, 0, 0.7)' 
             : 'rgba(255, 255, 0, 0.7)';
         
+        // Reproducir sonido
         this.playPowerUpSound();
+        
+        // Mostrar notificación
         this.showPowerUpNotification(type);
+        
+        // Vibración en VR si está disponible
+        if (this.isVRMode && this.vrInputHandler) {
+            this.vrInputHandler.vibrateController(0, 0.8, 200);
+            this.vrInputHandler.vibrateController(1, 0.8, 200);
+        }
         
         console.log(`✅ Power-up ACTIVADO: ${type} por ${duration}s`);
     }
@@ -802,17 +884,20 @@ export class Game {
             if (powerUp.active) {
                 powerUp.timer -= deltaTime;
                 
+                // Actualizar timer en UI
                 const indicator = this.powerUpIndicators[type];
                 const timerElement = indicator.querySelector('.timer');
                 if (timerElement) {
                     timerElement.textContent = `${Math.max(0, powerUp.timer).toFixed(1)}s`;
                 }
                 
+                // Efecto de parpadeo cuando está por terminar
                 if (powerUp.timer < 3.0) {
                     const blink = (Math.sin(Date.now() * 0.02) + 1) * 0.3 + 0.4;
                     indicator.style.opacity = blink;
                 }
                 
+                // Desactivar cuando el timer llega a 0
                 if (powerUp.timer <= 0) {
                     console.log(`⏰ Power-up ${type} terminó - Desactivando`);
                     this.deactivatePowerUp(type);
@@ -827,6 +912,7 @@ export class Game {
         this.activePowerUps[type].active = false;
         this.activePowerUps[type].timer = 0;
         
+        // Ocultar indicador UI
         this.powerUpIndicators[type].style.display = 'none';
         this.powerUpIndicators[type].style.opacity = '1';
         
@@ -834,13 +920,13 @@ export class Game {
     }
 
     showPowerUpNotification(type) {
-        const notification = document.createElement('div');
         const powerUpInfo = {
             magnet: { text: '🎯 IMÁN ACTIVADO!', color: '#FF0000', subtext: 'Atrae monedas automáticamente' },
             double: { text: '🔧 DOBLE PUNTUACIÓN!', color: '#FFFF00', subtext: 'Monedas valen 20 puntos' }
         };
         
         const info = powerUpInfo[type];
+        const notification = document.createElement('div');
         
         notification.style.cssText = `
             position: fixed;
@@ -878,8 +964,8 @@ export class Game {
                 100% { opacity: 0; transform: translate(-50%, -50%) scale(0.3); }
             }
         `;
-        document.head.appendChild(style);
         
+        document.head.appendChild(style);
         document.body.appendChild(notification);
         
         setTimeout(() => {
@@ -930,6 +1016,8 @@ export class Game {
         }
     }
 
+    // ===== GESTIÓN DEL JUEGO =====
+
     resetToMainMenu() {
         console.log("🔄 Reiniciando a menú principal...");
         
@@ -940,14 +1028,17 @@ export class Game {
             this.hideVRMenu();
         }
         
+        // Resetear estado del juego
         this.isGameStarted = false;
         this.isGameOver = false;
         this.isPaused = false;
         this.score = 0;
         this.distance = 0;
+        this.survivalTime = 0;
         this.gameSpeed = Config.GAME_START_SPEED;
         this.difficultyLevel = 1;
         
+        // Desactivar power-ups
         for (const type in this.activePowerUps) {
             this.activePowerUps[type].active = false;
             this.activePowerUps[type].timer = 0;
@@ -957,6 +1048,7 @@ export class Game {
             }
         }
         
+        // Resetear componentes
         if (this.obstacleManager) {
             this.obstacleManager.reset();
         }
@@ -964,14 +1056,17 @@ export class Game {
         if (this.player) this.player.reset();
         if (this.world) this.world.reset();
         
+        // Ocultar UI del juego
         this.ui.uiContainer.style.display = 'none';
         this.ui.gameOver.style.display = 'none';
         this.ui.pauseButton.style.display = 'none';
         this.ui.pauseMenu.style.display = 'none';
         
+        // Mostrar menú principal
         this.ui.modalOverlay.style.display = 'flex';
         this.ui.rulesModal.style.display = 'block';
 
+        // Reiniciar música de intro
         const introMusic = document.getElementById('intro-music');
         if (introMusic) {
             introMusic.currentTime = 0;
@@ -985,20 +1080,29 @@ export class Game {
 
     startGame() {
         this.clock.start();
-        console.log("🚀 INICIANDO JUEGO - VR Primera Persona con Menús");
+        console.log("🚀 INICIANDO JUEGO - Sistema VR Completo");
         
         this.checkInitialCollisions();
         
+        // Ocultar menú principal
         this.ui.modalOverlay.style.display = 'none';
         this.ui.rulesModal.style.display = 'none';
+        
+        // Mostrar UI del juego
         this.ui.uiContainer.style.display = 'block';
         this.ui.pauseButton.style.display = 'block';
 
+        // Actualizar estado
         this.isGameStarted = true;
         this.isGameOver = false;
         
+        // Iniciar música
         this.playBackgroundMusic();
+        
+        // Resetear lógica del juego
         this.resetGameLogic();
+        
+        // Iniciar loop de animación
         this.animate();
     }
 
@@ -1013,27 +1117,35 @@ export class Game {
         });
 
         console.log(`🎯 Obstáculos al inicio: ${this.obstacleManager.obstacles.length}`);
+        
+        if (Config.DEBUG_SETTINGS.SHOW_BOUNDING_BOXES) {
+            console.log("📦 Debug: Bounding boxes visibles");
+        }
     }
 
     resetGameLogic() {
-        console.log("🔄 Reseteando juego...");
+        console.log("🔄 Reseteando lógica del juego...");
         
         this.score = 0;
         this.distance = 0;
+        this.survivalTime = 0;
         this.gameSpeed = Config.GAME_START_SPEED;
         this.difficultyLevel = 1;
         this.frameCount = 0;
         this.debugStatsTimer = 0;
 
+        // Desactivar power-ups
         for (const type in this.activePowerUps) {
             this.activePowerUps[type].active = false;
             this.activePowerUps[type].timer = 0;
             this.powerUpIndicators[type].style.display = 'none';
         }
 
+        // Actualizar UI
         this.ui.score.textContent = `Puntos: 0`;
         this.ui.distance.textContent = `Distancia: 0m`;
 
+        // Resetear componentes
         if (this.obstacleManager) {
             this.obstacleManager.reset();
         }
@@ -1048,6 +1160,7 @@ export class Game {
         this.clock.start();
         console.log("🔄 Reiniciando el juego...");
         
+        // Ocultar UI de game over
         this.ui.gameOver.style.display = 'none';
         this.isGameOver = false;
         this.isPaused = false;
@@ -1057,15 +1170,22 @@ export class Game {
             this.hideVRMenu();
         }
         
+        // Iniciar música
         this.playBackgroundMusic();
+        
+        // Resetear lógica
         this.resetGameLogic();
+        
+        // Reanudar animación
         this.animate();
     }
 
     setupLights() {
+        // Luz ambiental
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
         this.scene.add(ambientLight);
 
+        // Luz direccional principal
         const dirLight = new THREE.DirectionalLight(0xffffff, 1);
         dirLight.position.set(5, 10, 7);
         dirLight.castShadow = true;
@@ -1073,9 +1193,10 @@ export class Game {
         dirLight.shadow.mapSize.height = 1024;
         dirLight.shadow.camera.near = 0.1;
         dirLight.shadow.camera.far = 50;
+        dirLight.shadow.bias = -0.001;
         this.scene.add(dirLight);
         
-        console.log("💡 Luces configuradas");
+        console.log("💡 Sistema de iluminación configurado");
     }
 
     loadEnvironment(hdrPath) {
@@ -1084,10 +1205,10 @@ export class Game {
             texture.mapping = THREE.EquirectangularReflectionMapping;
             this.scene.background = texture;
             this.scene.environment = texture;
-            console.log("✅ Fondo HDR cargado.");
+            console.log("✅ Fondo HDR cargado correctamente");
         }, undefined, (err) => {
-            console.warn("⚠️ No se pudo cargar el fondo HDR. Usando fondo azul por defecto.", err);
-            this.scene.background = new THREE.Color(0x87CEEB);
+            console.warn("⚠️ No se pudo cargar el fondo HDR. Usando fondo por defecto.", err);
+            this.scene.background = new THREE.Color(Config.FOG_COLOR);
         });
     }
 
@@ -1097,12 +1218,14 @@ export class Game {
         if (newDifficulty > this.difficultyLevel) {
             this.difficultyLevel = newDifficulty;
             
+            // Aumentar velocidad
             const speedIncrease = 2 * this.difficultyLevel;
             this.gameSpeed = Math.min(
                 Config.GAME_START_SPEED + speedIncrease, 
                 Config.GAME_MAX_SPEED
             );
             
+            // Ajustar tasa de aparición de obstáculos
             if (this.obstacleManager) {
                 this.obstacleManager.baseSpawnRate = Math.max(
                     0.5, 
@@ -1113,6 +1236,8 @@ export class Game {
             console.log(`📈 ¡Dificultad Nivel ${this.difficultyLevel}! Velocidad: ${this.gameSpeed.toFixed(1)}`);
         }
     }
+
+    // ===== CARGA DE ASSETS =====
 
     preloadAssets() {
         console.log("📦 Precargando assets...");
@@ -1147,6 +1272,7 @@ export class Game {
                 textureLoader.load(path, (texture) => {
                     texture.wrapS = THREE.RepeatWrapping;
                     texture.wrapT = THREE.RepeatWrapping;
+                    texture.encoding = THREE.sRGBEncoding;
                     console.log(`✅ Textura cargada: ${textureName}`);
                     resolve(texture);
                 }, undefined, (err) => {
@@ -1158,7 +1284,7 @@ export class Game {
 
         return new Promise(async (resolve, reject) => {
             try {
-                // RUTAS CORREGIDAS según tus archivos
+                // RUTAS DE ASSETS
                 const assetPaths = {
                     coin: 'Recursos/Low Poly Coin.fbx',
                     barrier: 'Recursos/concrete_road_barrier4k.fbx',
@@ -1259,6 +1385,7 @@ export class Game {
                     console.log(`✅ Textura con displacement aplicada: ${textureName}`);
                 };
 
+                // Aplicar texturas a cada modelo
                 applyTexture(car, carTexture, 'car');
                 applyTextureWithDisplacement(barrier, barrierDiffTexture, barrierDispTexture, 'barrier');
                 applyTextureWithDisplacement(rock, rockDiffTexture, rockDispTexture, 'rock');
@@ -1289,6 +1416,7 @@ export class Game {
 
                 console.log("🎉 ¡Todos los assets cargados y configurados!");
 
+                // Retornar assets organizados
                 resolve({
                     coin: coin,
                     playerModel: playerModel,
@@ -1315,8 +1443,10 @@ export class Game {
         });
     }
 
+    // ===== SISTEMA DE COLISIONES =====
+
     checkCollisions() {
-        if (this.isGameOver || this.vrMenuSystem.isActive) return;
+        if (this.isGameOver || this.vrMenuSystem.isActive || !this.isGameStarted) return;
 
         const playerBox = this.player.getBoundingBox();
         const playerPosition = this.player.group.position;
@@ -1325,7 +1455,7 @@ export class Game {
         this.debugStatsTimer++;
 
         // Mostrar stats de debug cada 5 segundos
-        if (this.debugStatsTimer > 300 && this.collisionDebugEnabled) {
+        if (this.debugStatsTimer > 300 && Config.DEBUG_SETTINGS.LOG_PERFORMANCE) {
             console.log(`📊 Frame ${this.frameCount} - Distancia: ${this.distance.toFixed(0)}m`);
             console.log(`📍 Jugador: X=${playerPosition.x.toFixed(2)}, Z=${playerPosition.z.toFixed(2)}`);
             this.debugStatsTimer = 0;
@@ -1339,21 +1469,24 @@ export class Game {
             const obstacleBox = obstacle.getBoundingBox();
             
             if (playerBox.intersectsBox(obstacleBox)) {
-                console.log("🚨 ¡COLISIÓN CON OBSTÁCULO! Game Over");
-                console.log(`📍 Obstáculo ${i}:`, {
-                    type: obstacle.type,
-                    position: {
-                        x: obstacle.mesh.position.x.toFixed(2),
-                        y: obstacle.mesh.position.y.toFixed(2),
-                        z: obstacle.mesh.position.z.toFixed(2)
-                    }
-                });
+                if (Config.DEBUG_SETTINGS.LOG_COLLISIONS) {
+                    console.log("🚨 ¡COLISIÓN CON OBSTÁCULO! Game Over");
+                    console.log(`📍 Obstáculo ${i}:`, {
+                        type: obstacle.type,
+                        position: {
+                            x: obstacle.mesh.position.x.toFixed(2),
+                            y: obstacle.mesh.position.y.toFixed(2),
+                            z: obstacle.mesh.position.z.toFixed(2)
+                        }
+                    });
+                }
                 
-                // NUEVO: Mostrar menú VR de Game Over
+                // En modo VR: mostrar menú VR de Game Over
                 if (this.isVRMode) {
                     this.showVRGameOverMenu();
                 }
                 
+                // Llamar al game over tradicional
                 this.gameOver("COLISIÓN CON OBSTÁCULO");
                 return;
             }
@@ -1366,18 +1499,31 @@ export class Game {
             
             const coinBox = coin.getBoundingBox();
             if (playerBox.intersectsBox(coinBox)) {
-                console.log("💰 Moneda recolectada!");
+                if (Config.DEBUG_SETTINGS.LOG_COLLISIONS) {
+                    console.log("💰 Moneda recolectada!");
+                }
+                
                 this.obstacleManager.collectCoin(coin);
                 
+                // Calcular puntos (con power-up de doble si está activo)
                 let points = 10;
                 if (this.activePowerUps.double.active) {
                     points = 20;
-                    console.log("✅ Bonus doble aplicado: +20 puntos");
+                    if (Config.DEBUG_SETTINGS.LOG_POWERUPS) {
+                        console.log("✅ Bonus doble aplicado: +20 puntos");
+                    }
                 }
                 
                 this.score += points;
                 this.ui.score.textContent = `Puntos: ${this.score}`;
+                
+                // Reproducir sonido
                 this.playCoinSound();
+                
+                // Vibración en VR si está disponible
+                if (this.isVRMode && this.vrInputHandler) {
+                    this.vrInputHandler.vibrateController(0, 0.3, 100);
+                }
             }
         }
 
@@ -1389,14 +1535,20 @@ export class Game {
             const powerUpBox = powerUp.getBoundingBox();
             
             if (playerBox.intersectsBox(powerUpBox)) {
-                console.log(`⚡ ¡COLISIÓN CON POWER-UP! Tipo: ${powerUp.powerUpType}`);
+                if (Config.DEBUG_SETTINGS.LOG_POWERUPS) {
+                    console.log(`⚡ ¡COLISIÓN CON POWER-UP! Tipo: ${powerUp.powerUpType}`);
+                }
                 
                 const powerUpType = powerUp.powerUpType;
                 
+                // Recolectar power-up
                 this.obstacleManager.collectPowerUp(powerUp);
                 
+                // Activar power-up
                 if (powerUpType && (powerUpType === 'magnet' || powerUpType === 'double')) {
-                    console.log(`🎯 Activando power-up: ${powerUpType}`);
+                    if (Config.DEBUG_SETTINGS.LOG_POWERUPS) {
+                        console.log(`🎯 Activando power-up: ${powerUpType}`);
+                    }
                     this.activatePowerUp(powerUpType);
                 } else {
                     console.error("❌ Tipo de power-up inválido:", powerUpType);
@@ -1409,16 +1561,19 @@ export class Game {
     gameOver(reason = "DESCONOCIDO") {
         if (this.isGameOver) return;
 
-        console.log("🛑 ================================");
-        console.log("🛑 GAME OVER - INICIANDO SECUENCIA");
-        console.log(`🛑 Razón: ${reason}`);
-        console.log(`🛑 Distancia: ${this.distance.toFixed(0)}m`);
-        console.log(`🛑 Puntuación: ${this.score}`);
-        console.log("🛑 ================================");
+        if (Config.DEBUG_SETTINGS.LOG_COLLISIONS) {
+            console.log("🛑 ================================");
+            console.log("🛑 GAME OVER - INICIANDO SECUENCIA");
+            console.log(`🛑 Razón: ${reason}`);
+            console.log(`🛑 Distancia: ${this.distance.toFixed(0)}m`);
+            console.log(`🛑 Puntuación: ${this.score}`);
+            console.log("🛑 ================================");
+        }
 
         this.isGameOver = true;
         this.pauseBackgroundMusic();
 
+        // Ejecutar animación de muerte del jugador
         if (this.player) {
             this.player.die();
         }
@@ -1429,13 +1584,17 @@ export class Game {
 
             const onDieAnimationFinished = (e) => {
                 if (e.action === dieAction) {
-                    console.log("💀 Animación 'die' terminada. Mostrando menú de Game Over.");
+                    if (Config.DEBUG_SETTINGS.LOG_COLLISIONS) {
+                        console.log("💀 Animación 'die' terminada. Mostrando menú de Game Over.");
+                    }
 
+                    // Actualizar estadísticas finales
                     document.getElementById('final-score').textContent = this.score;
                     document.getElementById('final-distance').textContent = Math.floor(this.distance) + 'm';
                     document.getElementById('final-coins').textContent = Math.floor(this.score / 10);
-                    document.getElementById('final-time').textContent = Math.floor(this.distance / this.gameSpeed) + 's';
+                    document.getElementById('final-time').textContent = Math.floor(this.survivalTime) + 's';
 
+                    // Mostrar menú tradicional de Game Over
                     this.ui.gameOver.style.display = 'block';
 
                     this.player.mixer.removeEventListener('finished', onDieAnimationFinished);
@@ -1444,21 +1603,32 @@ export class Game {
 
             this.player.mixer.addEventListener('finished', onDieAnimationFinished);
         } else if (!this.isVRMode) {
+            // Fallback si no hay animación
             this.ui.gameOver.style.display = 'block';
         }
     }
 
+    // ===== SISTEMA DE RENDERIZADO =====
+
     onWindowResize() {
+        // Actualizar cámara
         this.camera.aspect = window.innerWidth / window.innerHeight;
         this.camera.updateProjectionMatrix();
+        
+        // Actualizar renderer
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         
-        // Redimensionar renderizador CSS3D
+        // Actualizar renderizador CSS3D
         if (this.cssRenderer) {
             this.cssRenderer.setSize(window.innerWidth, window.innerHeight);
         }
         
-        console.log("🔄 Ventana redimensionada");
+        // Actualizar configuración dinámica
+        Config.updateAspectRatio();
+        
+        if (Config.DEBUG_SETTINGS.LOG_PERFORMANCE) {
+            console.log("🔄 Ventana redimensionada");
+        }
     }
 
     animate() {
@@ -1466,6 +1636,7 @@ export class Game {
             return;
         }
 
+        // Configurar loop de animación para VR o modo normal
         if (this.renderer.xr.isPresenting) {
             this.renderer.setAnimationLoop(this.render.bind(this));
         } else {
@@ -1475,17 +1646,32 @@ export class Game {
     }
 
     render() {
+        // Si está pausado y no hay menú VR activo, no renderizar
         if (this.isPaused && !this.vrMenuSystem.isActive) {
             return; 
         }
 
         const delta = this.clock.getDelta();
+        const currentTime = performance.now();
+        
+        // Calcular FPS (solo para debug)
+        if (Config.DEBUG_SETTINGS.LOG_PERFORMANCE && this.lastFrameTime > 0) {
+            const fps = 1000 / (currentTime - this.lastFrameTime);
+            if (this.frameCount % 60 === 0) {
+                console.log(`📈 FPS: ${fps.toFixed(1)}`);
+            }
+        }
+        this.lastFrameTime = currentTime;
+
+        // Actualizar tiempo de supervivencia
+        this.survivalTime += delta;
 
         // Actualizar controles VR
         if (this.vrControls && this.isVRMode) {
             this.vrControls.update(delta);
         }
 
+        // Actualizar jugador
         if (this.player) {
             this.player.update(delta);
             
@@ -1508,13 +1694,14 @@ export class Game {
             }
         }
 
+        // Si el juego terminó, solo actualizar animaciones de muerte
         if (this.isGameOver) {
             if (this.world) {
                 this.world.zombieCatch(delta);
             }
             this.renderer.render(this.scene, this.camera);
             
-            // Renderizar menú CSS3D si está activo
+            // Renderizar menú CSS3D si está activo (para VR)
             if (this.vrMenuSystem.isActive && this.cssRenderer) {
                 this.cssRenderer.render(this.cssScene, this.camera);
             }
@@ -1526,7 +1713,7 @@ export class Game {
         // Actualizar mundo
         this.world.update(delta, this.gameSpeed, playerPosition);
         
-        // Actualizar obstáculos
+        // Actualizar obstáculos y power-ups
         if (this.obstacleManager) {
             this.obstacleManager.update(
                 delta, 
@@ -1559,9 +1746,42 @@ export class Game {
         // Renderizar escena 3D principal
         this.renderer.render(this.scene, this.camera);
         
-        // Renderizar menú CSS3D si está activo
+        // Renderizar menú CSS3D si está activo (menús VR)
         if (this.vrMenuSystem.isActive && this.cssRenderer) {
             this.cssRenderer.render(this.cssScene, this.camera);
         }
     }
+
+    // ===== MÉTODOS PÚBLICOS PARA UI =====
+
+    getGameState() {
+        return {
+            isGameStarted: this.isGameStarted,
+            isGameOver: this.isGameOver,
+            isPaused: this.isPaused,
+            isVRMode: this.isVRMode,
+            score: this.score,
+            distance: Math.floor(this.distance),
+            survivalTime: Math.floor(this.survivalTime),
+            gameSpeed: this.gameSpeed.toFixed(1),
+            difficultyLevel: this.difficultyLevel,
+            activePowerUps: Object.keys(this.activePowerUps).filter(key => this.activePowerUps[key].active)
+        };
+    }
+
+    debugInfo() {
+        return {
+            fps: this.lastFrameTime > 0 ? (1000 / (performance.now() - this.lastFrameTime)).toFixed(1) : "N/A",
+            frameCount: this.frameCount,
+            playerState: this.player ? this.player.debugInfo() : null,
+            vrMenuActive: this.vrMenuSystem.isActive,
+            vrMenuType: this.vrMenuSystem.type,
+            activeObstacles: this.obstacleManager ? this.obstacleManager.obstacles.length : 0,
+            activeCoins: this.obstacleManager ? this.obstacleManager.coins.length : 0,
+            activePowerUpsCount: this.obstacleManager ? this.obstacleManager.powerUps.length : 0
+        };
+    }
 }
+
+// Exportar clase para acceso global
+window.Game = Game;
