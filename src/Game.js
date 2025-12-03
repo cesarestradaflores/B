@@ -1,5 +1,5 @@
 // -----------------------------------------------------------------
-// --- Game.js (VR PRIMERA PERSONA - VERSIÓN CORREGIDA CON CSS3D)
+// --- Game.js (VR PRIMERA PERSONA - VERSIÓN META QUEST 3 COMPLETA)
 // -----------------------------------------------------------------
 
 import * as THREE from 'three';
@@ -134,7 +134,7 @@ export class Game {
         this.renderer.outputEncoding = THREE.sRGBEncoding;
         document.body.appendChild(this.renderer.domElement);
 
-        // Configurar WebXR/VR
+        // Configurar WebXR/VR para Meta Quest
         this.setupWebXR();
 
         // Configurar cámara
@@ -170,9 +170,10 @@ export class Game {
         // Inicializar componentes del juego
         this.world = new GameWorld(this.scene, this.assets);
         this.player = new Player(this.scene, this.assets);
+        this.player.game = this; // Conectar referencia al juego
         this.obstacleManager = new ObstacleManager(this.scene, this.assets);
 
-        // Configurar controles VR
+        // Configurar controles VR Meta Quest 3
         this.setupVRControls();
         
         // Configurar sistema de input VR
@@ -191,12 +192,13 @@ export class Game {
         window.addEventListener('resize', this.onWindowResize.bind(this), false);
         document.addEventListener('keydown', this.player.onKeyDown.bind(this.player), false);
 
+        // AJUSTAR PARA META QUEST 3 - DESPUÉS DE Config.logConfig()
+        Config.adjustForMetaQuest();
+
         console.log("✅ Juego completamente inicializado - Sistema VR con Menús listo");
         
         return Promise.resolve();
     }
-
-    // ===== CONFIGURACIÓN VR =====
 
     setupWebXR() {
         this.renderer.xr.enabled = true;
@@ -232,7 +234,7 @@ export class Game {
         
         // Eventos de sesión VR
         this.renderer.xr.addEventListener('sessionstart', () => {
-            console.log('🚀 Sesión VR iniciada - Primera persona activada');
+            console.log('🚀 Sesión VR iniciada - Meta Quest 3 detectado');
             this.onVRStart();
         });
         
@@ -245,19 +247,19 @@ export class Game {
         const capabilities = VRInputHandler.detectVRCapabilities();
         console.log("🔍 Capacidades VR detectadas:", capabilities);
         
-        console.log("✅ WebXR configurado - Primera persona inmersiva");
+        console.log("✅ WebXR configurado para Meta Quest 3");
     }
 
     setupVRInputHandler() {
         // Inicializar el sistema de input VR
         this.vrInputHandler = new VRInputHandler(this.renderer, this);
-        console.log("✅ VR Input Handler configurado");
+        console.log("✅ VR Input Handler configurado para Meta Quest 3");
     }
 
     setupVRControls() {
         if (this.renderer.xr.enabled && this.player) {
             this.vrControls = new VRControls(this.camera, this.renderer, this.player, this.scene, this.cameraContainer);
-            console.log("✅ Controles VR primera persona configurados");
+            console.log("✅ Controles VR Meta Quest 3 configurados");
         }
     }
 
@@ -280,10 +282,10 @@ export class Game {
         // Notificar a la UI
         window.dispatchEvent(new CustomEvent('game-vr-start'));
         
-        // Mostrar instrucciones VR
+        // Mostrar instrucciones VR específicas para Meta Quest
         this.showVRInstructions();
         
-        console.log("🎮 Modo VR primera persona activado - Eres el personaje");
+        console.log("🎮 Modo VR Meta Quest 3 activado - Sistema de giro mejorado");
     }
 
     onVREnd() {
@@ -312,7 +314,29 @@ export class Game {
     }
 
     showVRInstructions() {
-        // Mostrar notificación de instrucciones VR
+        // Detectar si es Meta Quest
+        const userAgent = navigator.userAgent.toLowerCase();
+        const isMetaQuest = userAgent.includes('quest') || userAgent.includes('oculus');
+        
+        let instructions = '';
+        
+        if (isMetaQuest) {
+            instructions = `
+                <div style="margin-bottom: 15px;">🎮 CONTROLES META QUEST 3</div>
+                <div style="font-size: 1.2rem; margin-bottom: 10px;">Trigger L: Saltar • Trigger R: Rodar</div>
+                <div style="font-size: 1.2rem; margin-bottom: 10px;">Botón Grip: Pausa rápida</div>
+                <div style="font-size: 1.2rem; margin-bottom: 10px;">Botón A/X: Menú principal</div>
+                <div style="font-size: 1.2rem;">Girar cabeza y mantener: Cambiar carril</div>
+            `;
+        } else {
+            instructions = `
+                <div style="margin-bottom: 15px;">🎮 CONTROLES VR</div>
+                <div style="font-size: 1.2rem; margin-bottom: 10px;">Botón A/X: Pausa</div>
+                <div style="font-size: 1.2rem; margin-bottom: 10px;">Botón Grip: Menú rápido</div>
+                <div style="font-size: 1.2rem;">Mirar a los lados: Cambiar carril</div>
+            `;
+        }
+        
         const notification = document.createElement('div');
         notification.style.cssText = `
             position: fixed;
@@ -333,12 +357,7 @@ export class Game {
             animation: fadeInOut 5s ease-in-out;
         `;
         
-        notification.innerHTML = `
-            <div style="margin-bottom: 15px;">🎮 CONTROLES VR</div>
-            <div style="font-size: 1.2rem; margin-bottom: 10px;">Botón A/X: Pausa</div>
-            <div style="font-size: 1.2rem; margin-bottom: 10px;">Botón Grip: Menú rápido</div>
-            <div style="font-size: 1.2rem;">Mirar a los lados: Cambiar carril</div>
-        `;
+        notification.innerHTML = instructions;
         
         const style = document.createElement('style');
         style.textContent = `
@@ -363,10 +382,8 @@ export class Game {
         }, 5000);
     }
 
-    // ===== SISTEMA DE MENÚS VR =====
-
     setupVRMenuSystem() {
-        console.log("🔄 Configurando sistema de menús VR...");
+        console.log("🔄 Configurando sistema de menús VR para Meta Quest...");
         
         // 1. Configurar renderizador CSS3D
         this.setupCSS3DRenderer();
@@ -374,12 +391,11 @@ export class Game {
         // 2. Crear contenedor del menú VR
         this.createVRMenuContainer();
         
-        console.log("✅ Sistema de menús VR configurado");
+        console.log("✅ Sistema de menús VR configurado para Meta Quest");
     }
 
     setupCSS3DRenderer() {
         try {
-            // Verificar que CSS3DRenderer esté disponible
             if (typeof CSS3DRenderer === 'undefined' || typeof CSS3DObject === 'undefined') {
                 console.warn("⚠️ CSS3DRenderer no disponible, usando fallback 2D");
                 this.css3DAvailable = false;
@@ -406,11 +422,9 @@ export class Game {
     }
 
     createVRMenuContainer() {
-        // Crear elemento HTML para el menú VR
         this.vrMenuSystem.menuContainer = document.createElement('div');
         this.vrMenuSystem.menuContainer.id = 'vr-menu-container';
         
-        // Aplicar estilos dinámicamente desde Config
         const menuStyle = Config.VR_MENU_SETTINGS;
         this.vrMenuSystem.menuContainer.style.cssText = `
             position: absolute;
@@ -433,7 +447,6 @@ export class Game {
             opacity: ${menuStyle.OPACITY};
         `;
         
-        // Contenido del menú VR
         this.vrMenuSystem.menuContainer.innerHTML = `
             <div id="vr-menu-title" style="font-size: ${menuStyle.FONT_SIZE_TITLE}; 
                  color: ${menuStyle.COLOR_PRIMARY}; margin-bottom: 30px; 
@@ -448,13 +461,12 @@ export class Game {
             <div id="vr-menu-instructions" style="margin-top: 40px; padding-top: 20px; 
                  border-top: 2px solid rgba(255,255,255,0.2); font-size: 1rem; 
                  color: #888; font-style: italic;">
-                Usa el rayo del controlador para seleccionar opciones
+                META QUEST: Usa el Trigger para seleccionar opciones
             </div>
         `;
         
         document.body.appendChild(this.vrMenuSystem.menuContainer);
         
-        // Crear objeto CSS3D solo si está disponible
         if (this.css3DAvailable && typeof CSS3DObject !== 'undefined') {
             try {
                 this.vrMenuSystem.menuElement = new CSS3DObject(this.vrMenuSystem.menuContainer);
@@ -472,7 +484,6 @@ export class Game {
         } else {
             console.log("⚠️ CSS3DObject no disponible, usando menú 2D overlay");
             this.css3DAvailable = false;
-            // Ajustar estilos para menú 2D
             this.vrMenuSystem.menuContainer.style.position = 'fixed';
             this.vrMenuSystem.menuContainer.style.top = '50%';
             this.vrMenuSystem.menuContainer.style.left = '50%';
