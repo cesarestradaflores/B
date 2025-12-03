@@ -1511,7 +1511,7 @@ export class Game {
                             child.material.needsUpdate = true;
                         }
                     });
-                    console.log(`✅ Textura con displacement aplicada: ${textureName}`);
+                    console.log(`✅ Textura con displacement aplicada: ${texturaName}`);
                 };
 
                 // Aplicar texturas a cada modelo
@@ -1598,25 +1598,17 @@ export class Game {
             const obstacleBox = obstacle.getBoundingBox();
             
             if (playerBox.intersectsBox(obstacleBox)) {
-                if (Config.DEBUG_SETTINGS.LOG_COLLISIONS) {
-                    console.log("🚨 ¡COLISIÓN CON OBSTÁCULO! Game Over");
-                    console.log(`📍 Obstáculo ${i}:`, {
-                        type: obstacle.type,
-                        position: {
-                            x: obstacle.mesh.position.x.toFixed(2),
-                            y: obstacle.mesh.position.y.toFixed(2),
-                            z: obstacle.mesh.position.z.toFixed(2)
-                        }
-                    });
-                }
+                console.log("🚨 ¡COLISIÓN CON OBSTÁCULO! Game Over");
                 
-                // En modo VR: mostrar menú VR de Game Over
+                // SIEMPRE mostrar menú VR si está en modo VR
                 if (this.isVRMode) {
+                    console.log("🎮 Modo VR - Mostrando menú VR de Game Over");
                     this.showVRGameOverMenu();
+                } else {
+                    // Modo normal - mostrar menú tradicional
+                    console.log("🖥️ Modo normal - Mostrando menú tradicional");
+                    this.gameOver("COLISIÓN CON OBSTÁCULO");
                 }
-                
-                // Llamar al game over tradicional
-                this.gameOver("COLISIÓN CON OBSTÁCULO");
                 return;
             }
         }
@@ -1687,17 +1679,29 @@ export class Game {
         }
     }
     
+    showGameOverMenuFromVR() {
+        console.log("💀 Mostrando Game Over desde VR");
+        
+        // Detener el juego
+        this.isGameOver = true;
+        this.pauseBackgroundMusic();
+        
+        // Ejecutar animación de muerte del jugador
+        if (this.player) {
+            this.player.die();
+        }
+        
+        // Mostrar menú VR de Game Over
+        this.showVRGameOverMenu();
+        
+        // Notificar en consola
+        console.log("✅ Menú VR Game Over activado");
+    }
+    
     gameOver(reason = "DESCONOCIDO") {
         if (this.isGameOver) return;
 
-        if (Config.DEBUG_SETTINGS.LOG_COLLISIONS) {
-            console.log("🛑 ================================");
-            console.log("🛑 GAME OVER - INICIANDO SECUENCIA");
-            console.log(`🛑 Razón: ${reason}`);
-            console.log(`🛑 Distancia: ${this.distance.toFixed(0)}m`);
-            console.log(`🛑 Puntuación: ${this.score}`);
-            console.log("🛑 ================================");
-        }
+        console.log("🛑 GAME OVER - Razón:", reason);
 
         this.isGameOver = true;
         this.pauseBackgroundMusic();
@@ -1707,33 +1711,60 @@ export class Game {
             this.player.die();
         }
 
-        // Solo mostrar menú tradicional si NO estamos en VR
-        if (!this.isVRMode && this.player && this.player.mixer) {
-            const dieAction = this.player.actions.die;
+        // DECISIÓN: ¿Mostrar menú VR o tradicional?
+        if (this.isVRMode) {
+            // En VR, usar menú VR
+            console.log("🎮 VR Mode - Usando menú VR para Game Over");
+            this.showVRGameOverMenu();
+        } else {
+            // Modo normal, usar menú tradicional
+            console.log("🖥️ Normal Mode - Usando menú tradicional para Game Over");
+            
+            // Configurar animación de muerte
+            if (this.player && this.player.mixer) {
+                const dieAction = this.player.actions.die;
 
-            const onDieAnimationFinished = (e) => {
-                if (e.action === dieAction) {
-                    if (Config.DEBUG_SETTINGS.LOG_COLLISIONS) {
-                        console.log("💀 Animación 'die' terminada. Mostrando menú de Game Over.");
+                const onDieAnimationFinished = (e) => {
+                    if (e.action === dieAction) {
+                        console.log("💀 Animación 'die' terminada. Mostrando menú tradicional.");
+
+                        // Actualizar estadísticas finales
+                        document.getElementById('final-score').textContent = this.score;
+                        document.getElementById('final-distance').textContent = Math.floor(this.distance) + 'm';
+                        document.getElementById('final-coins').textContent = Math.floor(this.score / 10);
+                        document.getElementById('final-time').textContent = Math.floor(this.survivalTime) + 's';
+
+                        // Mostrar menú tradicional de Game Over
+                        this.ui.gameOver.style.display = 'block';
+
+                        this.player.mixer.removeEventListener('finished', onDieAnimationFinished);
                     }
+                };
 
-                    // Actualizar estadísticas finales
-                    document.getElementById('final-score').textContent = this.score;
-                    document.getElementById('final-distance').textContent = Math.floor(this.distance) + 'm';
-                    document.getElementById('final-coins').textContent = Math.floor(this.score / 10);
-                    document.getElementById('final-time').textContent = Math.floor(this.survivalTime) + 's';
-
-                    // Mostrar menú tradicional de Game Over
+                this.player.mixer.addEventListener('finished', onDieAnimationFinished);
+            } else {
+                // Fallback si no hay animación
+                setTimeout(() => {
                     this.ui.gameOver.style.display = 'block';
+                }, 1000);
+            }
+        }
+    }
 
-                    this.player.mixer.removeEventListener('finished', onDieAnimationFinished);
-                }
-            };
-
-            this.player.mixer.addEventListener('finished', onDieAnimationFinished);
-        } else if (!this.isVRMode) {
-            // Fallback si no hay animación
-            this.ui.gameOver.style.display = 'block';
+    // AÑADIR método para debug de carriles
+    debugLaneSystem() {
+        if (this.vrControls) {
+            console.log("🔧 Debug Sistema de Carriles:", {
+                jugador: {
+                    carrilActual: this.player.currentLane,
+                    posiciónX: this.player.group.position.x.toFixed(2)
+                },
+                vrControls: this.vrControls.gazeState ? {
+                    carrilVR: this.vrControls.gazeState.currentLane,
+                    targetVR: this.vrControls.gazeState.targetLane,
+                    angulo: this.vrControls.gazeState.gazeAngle?.toFixed(3)
+                } : "No disponible"
+            });
         }
     }
 

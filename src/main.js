@@ -42,7 +42,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Inicializar juego
     window.game = new Game();
     
-    // Resto del código existente...
     const startButton = document.getElementById('start-game-button');
     const restartButton = document.getElementById('restart-button');
 
@@ -61,7 +60,29 @@ document.addEventListener('DOMContentLoaded', () => {
         window.game.restartGame();
     });
     
-    window.game.init().catch(err => {
+    window.game.init().then(() => {
+        // CONECTAR JUGADOR AL JUEGO
+        if (window.game.player) {
+            window.game.player.connectToGame(window.game);
+        }
+        
+        // AÑADIR COMANDOS DE DEBUG
+        window.debugGame = {
+            showVRMenu: () => window.game.showVRGameOverMenu(),
+            showPauseMenu: () => window.game.showVRPauseMenu(),
+            debugLanes: () => window.game.debugLaneSystem(),
+            forceLeft: () => window.game.vrControls?.forceChangeLane(-1),
+            forceRight: () => window.game.vrControls?.forceChangeLane(1),
+            getState: () => window.game.getGameState()
+        };
+        
+        console.log("🎮 Comandos de debug disponibles:");
+        console.log("  - debugGame.showVRMenu() - Mostrar menú VR");
+        console.log("  - debugGame.debugLanes() - Debug carriles");
+        console.log("  - debugGame.forceLeft() - Forzar izquierda");
+        console.log("  - debugGame.forceRight() - Forzar derecha");
+        
+    }).catch(err => {
         console.error("Error al inicializar el juego:", err);
         const loadingScreen = document.getElementById('loading-screen');
         const errorScreen = document.getElementById('error-screen');

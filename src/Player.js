@@ -12,6 +12,9 @@ export class Player {
         this.height = 2.5; 
         this.width = 1;
 
+        // NUEVO: Referencia al juego
+        this.game = null;
+        
         this.group = new THREE.Group();
         this.group.scale.set(0.015, 0.015, 0.015);
         this.scene.add(this.group);
@@ -67,6 +70,12 @@ export class Player {
         this.vrHeadPosition = new THREE.Vector3();
         
         console.log("✅ Player inicializado con bounding box optimizado");
+    }
+
+    // AÑADIR método para conectar al juego
+    connectToGame(gameInstance) {
+        this.game = gameInstance;
+        console.log("🎮 Jugador conectado al juego");
     }
 
     setupAnimations() {
@@ -303,6 +312,7 @@ export class Player {
         }
     }
 
+    // MODIFICAR método strafe para mejor feedback
     strafe(direction) {
         if (this.state === Config.PLAYER_STATE.DEAD) return; 
 
@@ -312,8 +322,12 @@ export class Player {
         if (this.state === Config.PLAYER_STATE.RUNNING) {
             if (direction === -1 && this.actions.left) {
                 this.switchAnimation('left');
+                console.log(`🔄 Moviendo a izquierda - Carril ${this.currentLane}`);
             } else if (direction === 1 && this.actions.right) {
                 this.switchAnimation('right');
+                console.log(`🔄 Moviendo a derecha - Carril ${this.currentLane}`);
+            } else {
+                console.log(`🔄 Moviendo a carril ${this.currentLane}`);
             }
         }
         
@@ -431,7 +445,8 @@ export class Player {
                 z: this.group.position.z.toFixed(2)
             },
             vrMode: this.vrMode,
-            needsUpdate: this.needsBoundingBoxUpdate
+            needsUpdate: this.needsBoundingBoxUpdate,
+            connectedToGame: !!this.game
         };
     }
 }
