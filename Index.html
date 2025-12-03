@@ -13,7 +13,7 @@
     
     <!-- Audio para la música del juego (Subway Surfers) -->
     <audio id="game-music" loop>
-        <source src="Recursos/SubwaySurfers.mp3" type="audio/mpeg">
+        <source src="Recursos/Subway Surfers.mp3" type="audio/mpeg">
         Tu navegador no soporta el elemento de audio.
     </audio>
     
@@ -269,13 +269,14 @@
         }
 
         .audio-slider {
-            width: 100%;
-            margin: 10px 0;
-            -webkit-appearance: none;
-            height: 8px;
-            border-radius: 4px;
-            background: #333;
-            outline: none;
+           width: 100%;
+           margin: 10px 0;
+           -webkit-appearance: none; /* Para Chrome/Safari */
+           appearance: none;         /* Para compatibilidad estándar */
+           height: 8px;
+           border-radius: 4px;
+           background: #333;
+          outline: none;
         }
 
         .audio-slider::-webkit-slider-thumb {
@@ -1206,9 +1207,9 @@
     <!-- IMPORT MAP: Le dice al navegador dónde encontrar los módulos "three" y "three/addons/". -->
     <script type="importmap">
         {
-            "imports": {
-                "three": "https://cdn.jsdelivr.net/npm/three@0.166.1/build/three.module.js",
-                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.166.1/examples/jsm/"
+        "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.167.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/"
             }
         }
     </script>

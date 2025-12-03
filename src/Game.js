@@ -1,12 +1,12 @@
 // -----------------------------------------------------------------
-// --- Game.js (VR PRIMERA PERSONA - SISTEMA COMPLETO CON MENÚS VR)
+// --- Game.js (VR PRIMERA PERSONA - VERSIÓN CORREGIDA CON CSS3D)
 // -----------------------------------------------------------------
 
 import * as THREE from 'three';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
-import { CSS3DRenderer } from 'three/addons/renderers/CSS3DRenderer.js';
+import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer.js';
 
 import { Config } from './Config.js';
 import { Player } from './Player.js';
@@ -35,6 +35,7 @@ export class Game {
         // ===== SISTEMA CSS3D PARA MENÚS VR =====
         this.cssRenderer = null;
         this.cssScene = null;
+        this.css3DAvailable = false; // Flag para verificar disponibilidad
         
         // ===== COMPONENTES DEL JUEGO =====
         this.player = null;
@@ -45,7 +46,7 @@ export class Game {
         // ===== SISTEMA VR =====
         this.isVRMode = false;
         this.vrControls = null;
-        this.vrInputHandler = null; // NUEVO: Input Handler VR
+        this.vrInputHandler = null;
         this.cameraContainer = new THREE.Group();
 
         // ===== SISTEMA DE MENÚS VR =====
@@ -174,7 +175,7 @@ export class Game {
         // Configurar controles VR
         this.setupVRControls();
         
-        // NUEVO: Configurar sistema de input VR
+        // Configurar sistema de input VR
         this.setupVRInputHandler();
         
         // Configurar sistema de menús VR
@@ -377,17 +378,31 @@ export class Game {
     }
 
     setupCSS3DRenderer() {
-        this.cssRenderer = new CSS3DRenderer();
-        this.cssRenderer.setSize(window.innerWidth, window.innerHeight);
-        this.cssRenderer.domElement.style.position = 'absolute';
-        this.cssRenderer.domElement.style.top = '0';
-        this.cssRenderer.domElement.style.pointerEvents = 'none';
-        this.cssRenderer.domElement.style.zIndex = '999';
-        document.body.appendChild(this.cssRenderer.domElement);
-        
-        this.cssScene = new THREE.Scene();
-        
-        console.log("✅ Renderizador CSS3D configurado");
+        try {
+            // Verificar que CSS3DRenderer esté disponible
+            if (typeof CSS3DRenderer === 'undefined' || typeof CSS3DObject === 'undefined') {
+                console.warn("⚠️ CSS3DRenderer no disponible, usando fallback 2D");
+                this.css3DAvailable = false;
+                return;
+            }
+            
+            this.cssRenderer = new CSS3DRenderer();
+            this.cssRenderer.setSize(window.innerWidth, window.innerHeight);
+            this.cssRenderer.domElement.style.position = 'absolute';
+            this.cssRenderer.domElement.style.top = '0';
+            this.cssRenderer.domElement.style.pointerEvents = 'none';
+            this.cssRenderer.domElement.style.zIndex = '999';
+            document.body.appendChild(this.cssRenderer.domElement);
+            
+            this.cssScene = new THREE.Scene();
+            this.css3DAvailable = true;
+            
+            console.log("✅ Renderizador CSS3D configurado correctamente");
+        } catch (error) {
+            console.error("❌ Error al configurar CSS3DRenderer:", error);
+            this.css3DAvailable = false;
+            this.createFallbackVRMenu();
+        }
     }
 
     createVRMenuContainer() {
@@ -439,16 +454,67 @@ export class Game {
         
         document.body.appendChild(this.vrMenuSystem.menuContainer);
         
-        // Crear objeto CSS3D
-        this.vrMenuSystem.menuElement = new THREE.CSS3DObject(this.vrMenuSystem.menuContainer);
-        this.vrMenuSystem.menuElement.scale.set(
-            menuStyle.MENU_SCALE,
-            menuStyle.MENU_SCALE,
-            menuStyle.MENU_SCALE
-        );
-        this.cssScene.add(this.vrMenuSystem.menuElement);
+        // Crear objeto CSS3D solo si está disponible
+        if (this.css3DAvailable && typeof CSS3DObject !== 'undefined') {
+            try {
+                this.vrMenuSystem.menuElement = new CSS3DObject(this.vrMenuSystem.menuContainer);
+                this.vrMenuSystem.menuElement.scale.set(
+                    menuStyle.MENU_SCALE,
+                    menuStyle.MENU_SCALE,
+                    menuStyle.MENU_SCALE
+                );
+                this.cssScene.add(this.vrMenuSystem.menuElement);
+                console.log("✅ Contenedor de menú VR creado con CSS3DObject");
+            } catch (error) {
+                console.error("❌ Error al crear CSS3DObject:", error);
+                this.css3DAvailable = false;
+            }
+        } else {
+            console.log("⚠️ CSS3DObject no disponible, usando menú 2D overlay");
+            this.css3DAvailable = false;
+            // Ajustar estilos para menú 2D
+            this.vrMenuSystem.menuContainer.style.position = 'fixed';
+            this.vrMenuSystem.menuContainer.style.top = '50%';
+            this.vrMenuSystem.menuContainer.style.left = '50%';
+            this.vrMenuSystem.menuContainer.style.transform = 'translate(-50%, -50%)';
+        }
+    }
+
+    createFallbackVRMenu() {
+        console.log("🔄 Creando menú VR de fallback (2D overlay)");
         
-        console.log("✅ Contenedor de menú VR creado");
+        this.vrMenuSystem.menuContainer = document.createElement('div');
+        this.vrMenuSystem.menuContainer.id = 'vr-menu-fallback';
+        
+        this.vrMenuSystem.menuContainer.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 400px;
+            min-height: 300px;
+            background: rgba(20, 20, 30, 0.95);
+            border: 3px solid #00FF41;
+            border-radius: 15px;
+            padding: 30px;
+            color: white;
+            font-family: Arial, sans-serif;
+            text-align: center;
+            box-shadow: 0 0 50px rgba(0, 255, 65, 0.5);
+            backdrop-filter: blur(10px);
+            display: none;
+            pointer-events: auto;
+            z-index: 1000;
+        `;
+        
+        this.vrMenuSystem.menuContainer.innerHTML = `
+            <div id="vr-fallback-title" style="font-size: 2rem; color: #00FF41; margin-bottom: 20px;"></div>
+            <div id="vr-fallback-content" style="margin: 30px 0;"></div>
+            <div id="vr-fallback-buttons" style="display: flex; flex-direction: column; gap: 15px;"></div>
+        `;
+        
+        document.body.appendChild(this.vrMenuSystem.menuContainer);
+        console.log("✅ Menú VR de fallback creado");
     }
 
     showVRGameOverMenu() {
@@ -462,63 +528,83 @@ export class Game {
         const menuStyle = Config.VR_MENU_SETTINGS;
         
         // Configurar título
-        const titleElement = document.getElementById('vr-menu-title');
-        titleElement.textContent = '¡GAME OVER!';
-        titleElement.style.color = menuStyle.COLOR_SECONDARY;
-        titleElement.style.textShadow = `0 0 20px ${menuStyle.COLOR_SECONDARY}`;
+        const titleElement = document.getElementById('vr-menu-title') || document.getElementById('vr-fallback-title');
+        if (titleElement) {
+            titleElement.textContent = '¡GAME OVER!';
+            titleElement.style.color = menuStyle.COLOR_SECONDARY;
+            titleElement.style.textShadow = `0 0 20px ${menuStyle.COLOR_SECONDARY}`;
+        }
         
         // Configurar contenido
-        const contentElement = document.getElementById('vr-menu-content');
-        contentElement.innerHTML = `
-            <div style="margin-bottom: 30px; font-size: 1.4rem;">
-                Has sido atrapado por los zombies
-            </div>
-            <div style="background: rgba(255, 68, 68, 0.15); padding: 25px; border-radius: 12px; 
-                 border-left: 5px solid ${menuStyle.COLOR_SECONDARY}; border-right: 5px solid ${menuStyle.COLOR_SECONDARY};">
-                <div style="display: flex; justify-content: space-between; margin: 12px 0; font-size: 1.2rem;">
-                    <span>Puntuación Final:</span>
-                    <span style="color: ${menuStyle.COLOR_SECONDARY}; font-weight: bold; font-size: 1.3rem;">${this.score}</span>
+        const contentElement = document.getElementById('vr-menu-content') || document.getElementById('vr-fallback-content');
+        if (contentElement) {
+            contentElement.innerHTML = `
+                <div style="margin-bottom: 30px; font-size: 1.4rem;">
+                    Has sido atrapado por los zombies
                 </div>
-                <div style="display: flex; justify-content: space-between; margin: 12px 0; font-size: 1.2rem;">
-                    <span>Distancia Recorrida:</span>
-                    <span style="color: ${menuStyle.COLOR_SECONDARY}; font-weight: bold; font-size: 1.3rem;">${Math.floor(this.distance)}m</span>
+                <div style="background: rgba(255, 68, 68, 0.15); padding: 25px; border-radius: 12px; 
+                     border-left: 5px solid ${menuStyle.COLOR_SECONDARY}; border-right: 5px solid ${menuStyle.COLOR_SECONDARY};">
+                    <div style="display: flex; justify-content: space-between; margin: 12px 0; font-size: 1.2rem;">
+                        <span>Puntuación Final:</span>
+                        <span style="color: ${menuStyle.COLOR_SECONDARY}; font-weight: bold; font-size: 1.3rem;">${this.score}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin: 12px 0; font-size: 1.2rem;">
+                        <span>Distancia Recorrida:</span>
+                        <span style="color: ${menuStyle.COLOR_SECONDARY}; font-weight: bold; font-size: 1.3rem;">${Math.floor(this.distance)}m</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin: 12px 0; font-size: 1.2rem;">
+                        <span>Monedas Recolectadas:</span>
+                        <span style="color: ${menuStyle.COLOR_SECONDARY}; font-weight: bold; font-size: 1.3rem;">${Math.floor(this.score / 10)}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin: 12px 0; font-size: 1.2rem;">
+                        <span>Tiempo de Supervivencia:</span>
+                        <span style="color: ${menuStyle.COLOR_SECONDARY}; font-weight: bold; font-size: 1.3rem;">${Math.floor(this.survivalTime)}s</span>
+                    </div>
                 </div>
-                <div style="display: flex; justify-content: space-between; margin: 12px 0; font-size: 1.2rem;">
-                    <span>Monedas Recolectadas:</span>
-                    <span style="color: ${menuStyle.COLOR_SECONDARY}; font-weight: bold; font-size: 1.3rem;">${Math.floor(this.score / 10)}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin: 12px 0; font-size: 1.2rem;">
-                    <span>Tiempo de Supervivencia:</span>
-                    <span style="color: ${menuStyle.COLOR_SECONDARY}; font-weight: bold; font-size: 1.3rem;">${Math.floor(this.survivalTime)}s</span>
-                </div>
-            </div>
-        `;
+            `;
+        }
         
         // Configurar botones
-        const buttonsElement = document.getElementById('vr-menu-buttons');
-        buttonsElement.innerHTML = `
-            <button id="vr-restart-btn" class="vr-menu-btn" 
-                    style="background: linear-gradient(135deg, ${menuStyle.COLOR_SECONDARY} 0%, #CC0000 100%); 
-                    padding: ${menuStyle.BUTTON_PADDING}; font-size: ${menuStyle.FONT_SIZE_BUTTON};
-                    border-radius: ${menuStyle.BUTTON_BORDER_RADIUS}; transition: ${menuStyle.BUTTON_TRANSITION};">
-                🔄 REINICIAR NIVEL
-            </button>
-            <button id="vr-mainmenu-btn" class="vr-menu-btn" 
-                    style="background: linear-gradient(135deg, #666666 0%, #333333 100%); 
-                    padding: ${menuStyle.BUTTON_PADDING}; font-size: ${menuStyle.FONT_SIZE_BUTTON};
-                    border-radius: ${menuStyle.BUTTON_BORDER_RADIUS}; transition: ${menuStyle.BUTTON_TRANSITION};">
-                🏠 MENÚ PRINCIPAL
-            </button>
-        `;
+        const buttonsElement = document.getElementById('vr-menu-buttons') || document.getElementById('vr-fallback-buttons');
+        if (buttonsElement) {
+            buttonsElement.innerHTML = `
+                <button id="vr-restart-btn" class="vr-menu-btn" 
+                        style="background: linear-gradient(135deg, ${menuStyle.COLOR_SECONDARY} 0%, #CC0000 100%); 
+                        padding: ${menuStyle.BUTTON_PADDING}; font-size: ${menuStyle.FONT_SIZE_BUTTON};
+                        border-radius: ${menuStyle.BUTTON_BORDER_RADIUS}; transition: ${menuStyle.BUTTON_TRANSITION};">
+                    🔄 REINICIAR NIVEL
+                </button>
+                <button id="vr-mainmenu-btn" class="vr-menu-btn" 
+                        style="background: linear-gradient(135deg, #666666 0%, #333333 100%); 
+                        padding: ${menuStyle.BUTTON_PADDING}; font-size: ${menuStyle.FONT_SIZE_BUTTON};
+                        border-radius: ${menuStyle.BUTTON_BORDER_RADIUS}; transition: ${menuStyle.BUTTON_TRANSITION};">
+                    🏠 MENÚ PRINCIPAL
+                </button>
+            `;
+        }
         
         // Mostrar menú
-        this.vrMenuSystem.menuContainer.style.display = 'block';
-        this.positionVRMenu();
+        const menuToShow = this.vrMenuSystem.menuContainer || document.getElementById('vr-menu-fallback');
+        if (menuToShow) {
+            menuToShow.style.display = 'block';
+        }
+        
+        // Posicionar menú si es CSS3D
+        if (this.css3DAvailable) {
+            this.positionVRMenu();
+        }
         
         // Agregar event listeners a botones
         setTimeout(() => {
-            document.getElementById('vr-restart-btn').addEventListener('click', () => this.onVRRestartClick());
-            document.getElementById('vr-mainmenu-btn').addEventListener('click', () => this.onVRMainMenuClick());
+            const restartBtn = document.getElementById('vr-restart-btn');
+            const mainMenuBtn = document.getElementById('vr-mainmenu-btn');
+            
+            if (restartBtn) {
+                restartBtn.addEventListener('click', () => this.onVRRestartClick());
+            }
+            if (mainMenuBtn) {
+                mainMenuBtn.addEventListener('click', () => this.onVRMainMenuClick());
+            }
         }, 50);
         
         // Pausar el juego completamente
@@ -538,73 +624,96 @@ export class Game {
         const menuStyle = Config.VR_MENU_SETTINGS;
         
         // Configurar título
-        const titleElement = document.getElementById('vr-menu-title');
-        titleElement.textContent = 'JUEGO EN PAUSA';
-        titleElement.style.color = menuStyle.COLOR_PRIMARY;
-        titleElement.style.textShadow = `0 0 15px ${menuStyle.COLOR_PRIMARY}`;
+        const titleElement = document.getElementById('vr-menu-title') || document.getElementById('vr-fallback-title');
+        if (titleElement) {
+            titleElement.textContent = 'JUEGO EN PAUSA';
+            titleElement.style.color = menuStyle.COLOR_PRIMARY;
+            titleElement.style.textShadow = `0 0 15px ${menuStyle.COLOR_PRIMARY}`;
+        }
         
         // Configurar contenido
-        const contentElement = document.getElementById('vr-menu-content');
-        contentElement.innerHTML = `
-            <div style="margin-bottom: 30px; font-size: 1.4rem;">
-                El juego está pausado
-            </div>
-            <div style="background: rgba(0, 255, 65, 0.15); padding: 25px; border-radius: 12px; 
-                 border-left: 5px solid ${menuStyle.COLOR_PRIMARY}; border-right: 5px solid ${menuStyle.COLOR_PRIMARY};">
-                <div style="font-size: 1.2rem; margin-bottom: 15px;">
-                    <strong>Estado Actual:</strong>
+        const contentElement = document.getElementById('vr-menu-content') || document.getElementById('vr-fallback-content');
+        if (contentElement) {
+            contentElement.innerHTML = `
+                <div style="margin-bottom: 30px; font-size: 1.4rem;">
+                    El juego está pausado
                 </div>
-                <div style="display: flex; justify-content: space-between; margin: 10px 0;">
-                    <span>Puntuación:</span>
-                    <span style="color: ${menuStyle.COLOR_PRIMARY}; font-weight: bold;">${this.score}</span>
+                <div style="background: rgba(0, 255, 65, 0.15); padding: 25px; border-radius: 12px; 
+                     border-left: 5px solid ${menuStyle.COLOR_PRIMARY}; border-right: 5px solid ${menuStyle.COLOR_PRIMARY};">
+                    <div style="font-size: 1.2rem; margin-bottom: 15px;">
+                        <strong>Estado Actual:</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin: 10px 0;">
+                        <span>Puntuación:</span>
+                        <span style="color: ${menuStyle.COLOR_PRIMARY}; font-weight: bold;">${this.score}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin: 10px 0;">
+                        <span>Distancia:</span>
+                        <span style="color: ${menuStyle.COLOR_PRIMARY}; font-weight: bold;">${Math.floor(this.distance)}m</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin: 10px 0;">
+                        <span>Velocidad:</span>
+                        <span style="color: ${menuStyle.COLOR_PRIMARY}; font-weight: bold;">${this.gameSpeed.toFixed(1)}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin: 10px 0;">
+                        <span>Tiempo:</span>
+                        <span style="color: ${menuStyle.COLOR_PRIMARY}; font-weight: bold;">${Math.floor(this.survivalTime)}s</span>
+                    </div>
                 </div>
-                <div style="display: flex; justify-content: space-between; margin: 10px 0;">
-                    <span>Distancia:</span>
-                    <span style="color: ${menuStyle.COLOR_PRIMARY}; font-weight: bold;">${Math.floor(this.distance)}m</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin: 10px 0;">
-                    <span>Velocidad:</span>
-                    <span style="color: ${menuStyle.COLOR_PRIMARY}; font-weight: bold;">${this.gameSpeed.toFixed(1)}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin: 10px 0;">
-                    <span>Tiempo:</span>
-                    <span style="color: ${menuStyle.COLOR_PRIMARY}; font-weight: bold;">${Math.floor(this.survivalTime)}s</span>
-                </div>
-            </div>
-        `;
+            `;
+        }
         
         // Configurar botones
-        const buttonsElement = document.getElementById('vr-menu-buttons');
-        buttonsElement.innerHTML = `
-            <button id="vr-resume-btn" class="vr-menu-btn" 
-                    style="background: linear-gradient(135deg, ${menuStyle.COLOR_PRIMARY} 0%, #008800 100%); 
-                    padding: ${menuStyle.BUTTON_PADDING}; font-size: ${menuStyle.FONT_SIZE_BUTTON};
-                    border-radius: ${menuStyle.BUTTON_BORDER_RADIUS}; transition: ${menuStyle.BUTTON_TRANSITION};">
-                ▶️ REANUDAR JUEGO
-            </button>
-            <button id="vr-restart-pause-btn" class="vr-menu-btn" 
-                    style="background: linear-gradient(135deg, ${menuStyle.COLOR_ACCENT} 0%, #CC8400 100%); 
-                    padding: ${menuStyle.BUTTON_PADDING}; font-size: ${menuStyle.FONT_SIZE_BUTTON};
-                    border-radius: ${menuStyle.BUTTON_BORDER_RADIUS}; transition: ${menuStyle.BUTTON_TRANSITION};">
-                🔄 REINICIAR NIVEL
-            </button>
-            <button id="vr-mainmenu-pause-btn" class="vr-menu-btn" 
-                    style="background: linear-gradient(135deg, #666666 0%, #333333 100%); 
-                    padding: ${menuStyle.BUTTON_PADDING}; font-size: ${menuStyle.FONT_SIZE_BUTTON};
-                    border-radius: ${menuStyle.BUTTON_BORDER_RADIUS}; transition: ${menuStyle.BUTTON_TRANSITION};">
-                🏠 MENÚ PRINCIPAL
-            </button>
-        `;
+        const buttonsElement = document.getElementById('vr-menu-buttons') || document.getElementById('vr-fallback-buttons');
+        if (buttonsElement) {
+            buttonsElement.innerHTML = `
+                <button id="vr-resume-btn" class="vr-menu-btn" 
+                        style="background: linear-gradient(135deg, ${menuStyle.COLOR_PRIMARY} 0%, #008800 100%); 
+                        padding: ${menuStyle.BUTTON_PADDING}; font-size: ${menuStyle.FONT_SIZE_BUTTON};
+                        border-radius: ${menuStyle.BUTTON_BORDER_RADIUS}; transition: ${menuStyle.BUTTON_TRANSITION};">
+                    ▶️ REANUDAR JUEGO
+                </button>
+                <button id="vr-restart-pause-btn" class="vr-menu-btn" 
+                        style="background: linear-gradient(135deg, ${menuStyle.COLOR_ACCENT} 0%, #CC8400 100%); 
+                        padding: ${menuStyle.BUTTON_PADDING}; font-size: ${menuStyle.FONT_SIZE_BUTTON};
+                        border-radius: ${menuStyle.BUTTON_BORDER_RADIUS}; transition: ${menuStyle.BUTTON_TRANSITION};">
+                    🔄 REINICIAR NIVEL
+                </button>
+                <button id="vr-mainmenu-pause-btn" class="vr-menu-btn" 
+                        style="background: linear-gradient(135deg, #666666 0%, #333333 100%); 
+                        padding: ${menuStyle.BUTTON_PADDING}; font-size: ${menuStyle.FONT_SIZE_BUTTON};
+                        border-radius: ${menuStyle.BUTTON_BORDER_RADIUS}; transition: ${menuStyle.BUTTON_TRANSITION};">
+                    🏠 MENÚ PRINCIPAL
+                </button>
+            `;
+        }
         
         // Mostrar menú
-        this.vrMenuSystem.menuContainer.style.display = 'block';
-        this.positionVRMenu();
+        const menuToShow = this.vrMenuSystem.menuContainer || document.getElementById('vr-menu-fallback');
+        if (menuToShow) {
+            menuToShow.style.display = 'block';
+        }
+        
+        // Posicionar menú si es CSS3D
+        if (this.css3DAvailable) {
+            this.positionVRMenu();
+        }
         
         // Agregar event listeners
         setTimeout(() => {
-            document.getElementById('vr-resume-btn').addEventListener('click', () => this.onVRResumeClick());
-            document.getElementById('vr-restart-pause-btn').addEventListener('click', () => this.onVRRestartClick());
-            document.getElementById('vr-mainmenu-pause-btn').addEventListener('click', () => this.onVRMainMenuClick());
+            const resumeBtn = document.getElementById('vr-resume-btn');
+            const restartBtn = document.getElementById('vr-restart-pause-btn');
+            const mainMenuBtn = document.getElementById('vr-mainmenu-pause-btn');
+            
+            if (resumeBtn) {
+                resumeBtn.addEventListener('click', () => this.onVRResumeClick());
+            }
+            if (restartBtn) {
+                restartBtn.addEventListener('click', () => this.onVRRestartClick());
+            }
+            if (mainMenuBtn) {
+                mainMenuBtn.addEventListener('click', () => this.onVRMainMenuClick());
+            }
         }, 50);
         
         // Pausar el juego completamente
@@ -614,7 +723,7 @@ export class Game {
     }
 
     positionVRMenu() {
-        if (!this.camera || !this.vrMenuSystem.menuElement) return;
+        if (!this.camera || !this.vrMenuSystem.menuElement || !this.css3DAvailable) return;
         
         // Obtener posición y dirección de la cámara
         const cameraWorldPosition = new THREE.Vector3();
@@ -722,15 +831,24 @@ export class Game {
         this.vrMenuSystem.isActive = false;
         this.vrMenuSystem.type = null;
         
-        if (this.vrMenuSystem.menuContainer) {
-            this.vrMenuSystem.menuContainer.style.display = 'none';
-        }
+        // Ocultar todos los posibles menús
+        const menus = [
+            this.vrMenuSystem.menuContainer,
+            document.getElementById('vr-menu-container'),
+            document.getElementById('vr-menu-fallback')
+        ];
+        
+        menus.forEach(menu => {
+            if (menu) {
+                menu.style.display = 'none';
+            }
+        });
         
         // Limpiar event listeners de botones
-        const buttons = ['vr-restart-btn', 'vr-mainmenu-btn', 'vr-resume-btn', 
-                        'vr-restart-pause-btn', 'vr-mainmenu-pause-btn'];
+        const buttonIds = ['vr-restart-btn', 'vr-mainmenu-btn', 'vr-resume-btn', 
+                          'vr-restart-pause-btn', 'vr-mainmenu-pause-btn'];
         
-        buttons.forEach(btnId => {
+        buttonIds.forEach(btnId => {
             const btn = document.getElementById(btnId);
             if (btn) {
                 const newBtn = btn.cloneNode(true);
@@ -1688,7 +1806,7 @@ export class Game {
                 }
                 
                 // Actualizar posición del menú VR si está activo
-                if (this.vrMenuSystem.isActive) {
+                if (this.vrMenuSystem.isActive && this.css3DAvailable) {
                     this.positionVRMenu();
                 }
             }
@@ -1702,7 +1820,7 @@ export class Game {
             this.renderer.render(this.scene, this.camera);
             
             // Renderizar menú CSS3D si está activo (para VR)
-            if (this.vrMenuSystem.isActive && this.cssRenderer) {
+            if (this.vrMenuSystem.isActive && this.cssRenderer && this.css3DAvailable) {
                 this.cssRenderer.render(this.cssScene, this.camera);
             }
             return;
@@ -1747,7 +1865,7 @@ export class Game {
         this.renderer.render(this.scene, this.camera);
         
         // Renderizar menú CSS3D si está activo (menús VR)
-        if (this.vrMenuSystem.isActive && this.cssRenderer) {
+        if (this.vrMenuSystem.isActive && this.cssRenderer && this.css3DAvailable) {
             this.cssRenderer.render(this.cssScene, this.camera);
         }
     }
@@ -1776,6 +1894,7 @@ export class Game {
             playerState: this.player ? this.player.debugInfo() : null,
             vrMenuActive: this.vrMenuSystem.isActive,
             vrMenuType: this.vrMenuSystem.type,
+            css3DAvailable: this.css3DAvailable,
             activeObstacles: this.obstacleManager ? this.obstacleManager.obstacles.length : 0,
             activeCoins: this.obstacleManager ? this.obstacleManager.coins.length : 0,
             activePowerUpsCount: this.obstacleManager ? this.obstacleManager.powerUps.length : 0

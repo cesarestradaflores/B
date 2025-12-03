@@ -222,7 +222,7 @@ export const Config = {
     VERSION: '1.0.0',
     BUILD_DATE: '2024-12-03',
     COMPATIBILITY: {
-        THREEJS: '^0.166.1',
+        THREEJS: '^0.167.0',
         WEBXR: '1.0',
         BROWSERS: ['Chrome 79+', 'Firefox 70+', 'Edge 79+']
     }
