@@ -1511,7 +1511,7 @@ export class Game {
                             child.material.needsUpdate = true;
                         }
                     });
-                    console.log(`✅ Textura con displacement aplicada: ${texturaName}`);
+                    console.log(`✅ Textura con displacement aplicada: ${textureName}`); // CORREGIDO
                 };
 
                 // Aplicar texturas a cada modelo
